@@ -3136,6 +3136,7 @@
                         secid: secid,
                         code: code,
                         market: item.market,
+                        marketType: 'CN_FUTURES',
                         name: name,
                         price: price,
                         changePercent: parseFloat(changePercent.toFixed(2)),
@@ -5300,7 +5301,7 @@
             let list = [];
             let officialPrePrice = 0;
             const quote = activeModalQuote;
-            const marketType = quote ? quote.marketType : 'CN_FUTURES';
+            const marketType = (quote && quote.marketType) ? quote.marketType : 'CN_FUTURES';
             const eastSecid = getInstrumentEastSecId(quote, secid);
 
             // 预设默认基准昨结 (以当前标的独立行情报价为初值，局部变量严格自闭环，绝无任何跨标的污染)
@@ -5516,7 +5517,15 @@
                 let prevTDay = '';
                 list.forEach((b, idx) => {
                     let tInfo;
-                    if (marketType === 'GLOBAL_FUTURES') {
+                    if (b.tradingDay && b.tradingDay.includes('-')) {
+                        const parts = b.tradingDay.split('-').map(Number);
+                        const d = new Date(parts[0], parts[1] - 1, parts[2]);
+                        const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+                        tInfo = {
+                            tradingDay: b.tradingDay,
+                            shortLabel: `${String(parts[1]).padStart(2, '0')}/${String(parts[2]).padStart(2, '0')} 周${weekdays[d.getDay()]}`
+                        };
+                    } else if (marketType === 'GLOBAL_FUTURES') {
                         // 外盘期货 06:00 切分
                         tInfo = getGlobalFuturesTradingDay(b.dateStr);
                     } else if (marketType === 'US_STOCK' || marketType === 'HK_STOCK') {
@@ -6030,7 +6039,7 @@
         // 绘制多周期 K 线图 (新浪 1023 根真实多日历史数据库，初始化精准截取 150 根/80 根)
         async function drawKlineChart(ctx, w, h, klt, reqLimit) {
             const quote = activeModalQuote;
-            const marketType = quote ? quote.marketType : 'CN_FUTURES';
+            const marketType = (quote && quote.marketType) ? quote.marketType : 'CN_FUTURES';
             const code = quote ? (quote.code || quote.secid) : activeModalSecId;
             cachedFullKlines = [];
 
