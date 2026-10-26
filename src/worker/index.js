@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// src/worker/index.js
+// src/worker/index.js - Build: 2026-10-27-multi-market-v1
 var CLIST_FS = "m:113,m:114,m:115,m:220,m:142,m:225";
 var CLIST_FIELDS = "f12,f13,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18,f124";
 var CLIST_UT = "bd1d9ddb04089700cf9c27f6f7426281";
