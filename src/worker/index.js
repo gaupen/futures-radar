@@ -316,11 +316,19 @@ var index_default = {
       const ndays = url.searchParams.get("ndays") || "5";
       if (!secid) return jsonResp({ error: "missing secid" }, 400);
 
+      // 1. 边缘缓存 (Cloudflare Edge Cache 15秒，命中 0ms 响应)
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString(), request);
+      try {
+        const cachedResp = await cache.match(cacheKey);
+        if (cachedResp) return cachedResp;
+      } catch (ce) {}
+
+      // 2. 轮询东财多节点 (超时收紧为 1200ms 快速失败，绝不空转拖垮系统)
       const hosts = [
         "https://push2his.eastmoney.com",
         "https://82.push2.eastmoney.com",
-        "https://push2.eastmoney.com",
-        "https://push2delay.eastmoney.com"
+        "https://push2.eastmoney.com"
       ];
       for (const h of hosts) {
         try {
@@ -329,21 +337,28 @@ var index_default = {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
               "Referer": "https://quote.eastmoney.com/"
-            }
+            },
+            signal: AbortSignal.timeout(1200)
           });
           if (emResp.ok) {
             const data = await emResp.text();
-            return new Response(data, {
-              status: 200,
-              headers: {
-                "content-type": "application/json; charset=utf-8",
-                "access-control-allow-origin": "*",
-                "cache-control": "public, max-age=15"
+            if (data && data.includes('"trends"')) {
+              const respToCache = new Response(data, {
+                status: 200,
+                headers: {
+                  "content-type": "application/json; charset=utf-8",
+                  "access-control-allow-origin": "*",
+                  "cache-control": "public, max-age=15"
+                }
+              });
+              if (ctx && typeof ctx.waitUntil === 'function') {
+                ctx.waitUntil(cache.put(cacheKey, respToCache.clone()));
               }
-            });
+              return respToCache;
+            }
           }
         } catch (e) {
-          // try next host
+          // try next host quickly
         }
       }
       return jsonResp({ error: "all eastmoney hosts failed" }, 502);
