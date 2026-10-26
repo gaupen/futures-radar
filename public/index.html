@@ -4197,7 +4197,10 @@
             cachedTrendSymbol = '';
             cachedTrendOfficialPrePrice = 0;
             overviewDragState = null;
+            mouseDragState = null;
             trendOverviewRect = null;
+            klineOverviewRect = null;
+            chartViewStart = 0;
             startAllTimers();
         }
 
@@ -4299,6 +4302,11 @@
             const btn = document.getElementById(tabId);
             if (btn) btn.classList.add('active');
 
+            chartViewStart = 0;
+            overviewDragState = null;
+            mouseDragState = null;
+            klineOverviewRect = null;
+
             renderProChart();
         }
 
@@ -4327,8 +4335,10 @@
         let cachedTrendOfficialPrePrice = 0; // 交易所官方前结算基准价
         let trendViewStartRatio = 0.60;    // 视口起始比例 (0.0 ~ 1.0)
         let trendViewEndRatio = 1.00;      // 视口结束比例 (0.0 ~ 1.0)
-        let trendOverviewRect = null;      // Overview 几何区域与视口像素位置
-        let overviewDragState = null;      // 拖拽手势状态 { mode: 'pan'|'left'|'right', startX, startLeft, startRight }
+        let trendOverviewRect = null;      // Trend Overview 几何区域与视口像素位置
+        let klineOverviewRect = null;      // K线 Overview 几何区域与视口像素位置
+        let overviewDragState = null;      // Overview 拖拽手势状态 { target: 'trend'|'kline', mode: 'pan'|'left'|'right', ... }
+        let mouseDragState = null;         // 桌面端鼠标主图拖拽状态 { type: 'kline-pan'|'trend-pan', ... }
 
         // 触控 / 鼠标 共用：根据画布 X 坐标显示对应 K 柱 / 分时点详情
         function showBarInfoAtX(x) {
@@ -4364,42 +4374,48 @@
             }
 
             if (!activeRenderData) return;
-            const { klines, step } = activeRenderData;
-            const idx = Math.floor(x / step);
+            const { klines, step, padL = 0 } = activeRenderData;
+            const idx = Math.floor((x - padL) / step);
             if (idx < 0 || idx >= klines.length) return;
             const k = klines[idx];
             const isUp = k.close >= k.open;
+            let maStr = '';
+            if (k.ma5) maStr += ` <span style="color:#f1c40f;">M5:${k.ma5.toFixed(1)}</span>`;
+            if (k.ma10) maStr += ` <span style="color:#9b59b6;">M10:${k.ma10.toFixed(1)}</span>`;
+            if (k.ma20) maStr += ` <span style="color:#3498db;">M20:${k.ma20.toFixed(1)}</span>`;
             infoEl.innerHTML = `
                 <span>${k.date}</span> |
                 <span>开: ${k.open}</span>
                 <span>高: ${k.high}</span>
                 <span>低: ${k.low}</span>
                 <span style="color:${isUp ? '#f85149' : '#2ea043'}; font-weight:bold;">收: ${k.close}</span> |
-                <span>量: ${k.vol}手</span>
+                <span>量: ${k.vol}手</span>${maStr}
             `;
         }
 
-        // Overview 迷你小地图点击与拖拽命中检测
+        // Overview 迷你小地图点击与拖拽命中检测 (分时图与 K 线图共用)
         function getOverviewHit(px, py) {
-            if (currentChartType !== 'trend' || !trendOverviewRect) return null;
-            const { x, y, w, h, vx1, vx2 } = trendOverviewRect;
-            // 手机触屏扩大上下触控热区，让手指更容易按住滑块
-            if (py < y - 10 || py > y + h + 14 || px < x - 12 || px > x + w + 12) return null;
-            if (Math.abs(px - vx1) <= 16) return 'left';
-            if (Math.abs(px - vx2) <= 16) return 'right';
+            const rect = (currentChartType === 'trend') ? trendOverviewRect : klineOverviewRect;
+            if (!rect) return null;
+            const { x, y, w, h, vx1, vx2 } = rect;
+            // 触控/鼠标扩大上下判定区，更易抓取滑块
+            if (py < y - 6 || py > y + h + 8 || px < x - 8 || px > x + w + 8) return null;
+            if (Math.abs(px - vx1) <= 10) return 'left';
+            if (Math.abs(px - vx2) <= 10) return 'right';
             if (px >= vx1 && px <= vx2) return 'pan';
             return 'jump';
         }
 
-        // 触控手势：双指捏合缩放 K 线、单指拖动平移、单指上下滑切换合约（全屏阻止页面穿透滚动）
+        // 触控手势与桌面端鼠标拖拽绑定 (双指缩放、左右拖拽全景平移、Overview 导航联动)
         let touchState = null;
         let touchBound = false;
         function bindChartTouch(canvas) {
             if (touchBound || !canvas) return;
             touchBound = true;
 
+            // 1. 移动端触屏事件
             canvas.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1 && currentChartType === 'trend' && trendOverviewRect) {
+                if (e.touches.length === 1) {
                     const rect = canvas.getBoundingClientRect();
                     const px = e.touches[0].clientX - rect.left;
                     const py = e.touches[0].clientY - rect.top;
@@ -4407,20 +4423,37 @@
                     if (hit) {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (hit === 'jump') {
-                            const { x, w } = trendOverviewRect;
-                            const curSpan = trendViewEndRatio - trendViewStartRatio;
-                            const centerRatio = (px - x) / w;
-                            let nStart = centerRatio - curSpan / 2;
-                            let nEnd = centerRatio + curSpan / 2;
-                            if (nStart < 0) { nEnd -= nStart; nStart = 0; }
-                            if (nEnd > 1) { nStart -= (nEnd - 1); nEnd = 1; }
-                            trendViewStartRatio = Math.max(0, nStart);
-                            trendViewEndRatio = Math.min(1, nEnd);
-                            redrawTrendCanvasOnly();
-                            overviewDragState = { mode: 'pan', startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
-                        } else {
-                            overviewDragState = { mode: hit, startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
+                        if (currentChartType === 'trend' && trendOverviewRect) {
+                            if (hit === 'jump') {
+                                const { x, w } = trendOverviewRect;
+                                const curSpan = trendViewEndRatio - trendViewStartRatio;
+                                const centerRatio = (px - x) / w;
+                                let nStart = centerRatio - curSpan / 2;
+                                let nEnd = centerRatio + curSpan / 2;
+                                if (nStart < 0) { nEnd -= nStart; nStart = 0; }
+                                if (nEnd > 1) { nStart -= (nEnd - 1); nEnd = 1; }
+                                trendViewStartRatio = Math.max(0, nStart);
+                                trendViewEndRatio = Math.min(1, nEnd);
+                                redrawTrendCanvasOnly();
+                                overviewDragState = { target: 'trend', mode: 'pan', startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
+                            } else {
+                                overviewDragState = { target: 'trend', mode: hit, startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
+                            }
+                        } else if (currentChartType !== 'trend' && klineOverviewRect && cachedFullKlines) {
+                            const totalBars = cachedFullKlines.length;
+                            if (hit === 'jump') {
+                                const { x, w } = klineOverviewRect;
+                                const clickRatio = (px - x) / w;
+                                const targetCenter = Math.round(clickRatio * totalBars);
+                                const targetStart = targetCenter - Math.round(currentVisibleCount / 2);
+                                let nv = totalBars - currentVisibleCount - targetStart;
+                                nv = Math.max(0, Math.min(totalBars - currentVisibleCount, nv));
+                                chartViewStart = nv;
+                                redrawKlineCanvasOnly();
+                                overviewDragState = { target: 'kline', mode: 'pan', startX: px, initialViewStart: chartViewStart, initialCount: currentVisibleCount, totalBars };
+                            } else {
+                                overviewDragState = { target: 'kline', mode: hit, startX: px, initialViewStart: chartViewStart, initialCount: currentVisibleCount, totalBars };
+                            }
                         }
                         return;
                     }
@@ -4446,34 +4479,64 @@
             }, { passive: false });
 
             canvas.addEventListener('touchmove', (e) => {
-                if (overviewDragState && currentChartType === 'trend' && trendOverviewRect) {
+                if (overviewDragState) {
                     e.preventDefault();
                     e.stopPropagation();
                     const rect = canvas.getBoundingClientRect();
                     const px = e.touches[0].clientX - rect.left;
-                    const dx = px - overviewDragState.startX;
-                    const dxRatio = dx / trendOverviewRect.w;
-                    const minSpan = 0.05;
-
-                    if (overviewDragState.mode === 'pan') {
-                        const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
-                        let nStart = overviewDragState.startLeft + dxRatio;
-                        let nEnd = overviewDragState.startRight + dxRatio;
-                        if (nStart < 0) { nStart = 0; nEnd = span; }
-                        if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
-                        trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
-                        trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
-                    } else if (overviewDragState.mode === 'left') {
-                        trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
-                    } else if (overviewDragState.mode === 'right') {
-                        trendViewEndRatio = Math.min(1.0, Math.max(overviewDragState.startLeft + minSpan, overviewDragState.startRight + dxRatio));
+                    if (overviewDragState.target === 'trend' && trendOverviewRect) {
+                        const dx = px - overviewDragState.startX;
+                        const dxRatio = dx / trendOverviewRect.w;
+                        const minSpan = 0.05;
+                        if (overviewDragState.mode === 'pan') {
+                            const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
+                            let nStart = overviewDragState.startLeft + dxRatio;
+                            let nEnd = overviewDragState.startRight + dxRatio;
+                            if (nStart < 0) { nStart = 0; nEnd = span; }
+                            if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
+                            trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
+                            trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
+                        } else if (overviewDragState.mode === 'left') {
+                            trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
+                        } else if (overviewDragState.mode === 'right') {
+                            trendViewEndRatio = Math.min(1.0, Math.max(overviewDragState.startLeft + minSpan, overviewDragState.startRight + dxRatio));
+                        }
+                        redrawTrendCanvasOnly();
+                    } else if (overviewDragState.target === 'kline' && klineOverviewRect && cachedFullKlines) {
+                        const dx = px - overviewDragState.startX;
+                        const dxRatio = dx / klineOverviewRect.w;
+                        const total = overviewDragState.totalBars;
+                        const barDelta = Math.round(dxRatio * total);
+                        if (overviewDragState.mode === 'pan') {
+                            let nv = overviewDragState.initialViewStart - barDelta;
+                            nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
+                            if (nv !== chartViewStart) {
+                                chartViewStart = nv;
+                                redrawKlineCanvasOnly();
+                            }
+                        } else if (overviewDragState.mode === 'left') {
+                            let newCount = overviewDragState.initialCount - barDelta;
+                            newCount = Math.max(20, Math.min(total, newCount));
+                            let nv = overviewDragState.initialViewStart;
+                            nv = Math.max(0, Math.min(total - newCount, nv));
+                            currentVisibleCount = newCount;
+                            chartViewStart = nv;
+                            redrawKlineCanvasOnly();
+                        } else if (overviewDragState.mode === 'right') {
+                            let newCount = overviewDragState.initialCount + barDelta;
+                            newCount = Math.max(20, Math.min(total, newCount));
+                            let nv = overviewDragState.initialViewStart - barDelta;
+                            nv = Math.max(0, Math.min(total - newCount, nv));
+                            currentVisibleCount = newCount;
+                            chartViewStart = nv;
+                            redrawKlineCanvasOnly();
+                        }
                     }
-                    redrawTrendCanvasOnly();
                     return;
                 }
 
                 if (!touchState) return;
-                e.preventDefault(); // 阻止手机浏览器默认滚动/下拉刷新
+                e.preventDefault();
 
                 if (touchState.mode === 'pinch' && e.touches.length === 2) {
                     if (currentChartType === 'trend' || !cachedFullKlines || cachedFullKlines.length === 0) return;
@@ -4495,7 +4558,7 @@
 
                     if (Math.abs(dx) > 6 || Math.abs(dy) > 6) touchState.moved = true;
 
-                    // 1. 垂直滑动手势：单指上滑 / 下滑直接切换上一合约 / 下一合约
+                    // 垂直滑动：切换合约
                     if (!touchState.swipedContract && Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx) * 1.25) {
                         touchState.swipedContract = true;
                         if (dy < -42) {
@@ -4506,7 +4569,7 @@
                         return;
                     }
 
-                    // 2. 水平平移手势：K 线图左右拖动查看历史时间轴
+                    // 水平滑动：K 线图平移
                     if (!touchState.swipedContract && currentChartType !== 'trend' && cachedFullKlines && cachedFullKlines.length > 0) {
                         const stepPx = (canvas.clientWidth / currentVisibleCount) || 6;
                         const barDelta = Math.round(dx / stepPx);
@@ -4518,7 +4581,6 @@
                             redrawKlineCanvasOnly();
                         }
                     } else if (!touchState.swipedContract && currentChartType === 'trend') {
-                        // 分时图下水平拖动：跟随手指显示对应时段报价明细
                         const rect = canvas.getBoundingClientRect();
                         showBarInfoAtX(x - rect.left);
                     }
@@ -4548,61 +4610,178 @@
                 touchState = null;
             });
 
-            // 桌面端鼠标：Overview 拖拽与十字光标联动
+            // 2. 桌面端鼠标：Overview 拖拽、主图拖拽平移 (Pan) 与十字光标悬浮
             canvas.addEventListener('mousedown', (e) => {
-                if (currentChartType !== 'trend' || !trendOverviewRect) return;
+                if (e.button !== 0) return;
                 const rect = canvas.getBoundingClientRect();
                 const px = e.clientX - rect.left;
                 const py = e.clientY - rect.top;
+
+                // A. Overview 迷你小地图点击 / 拖拽
                 const hit = getOverviewHit(px, py);
                 if (hit) {
                     e.preventDefault();
-                    if (hit === 'jump') {
-                        const { x, w } = trendOverviewRect;
-                        const curSpan = trendViewEndRatio - trendViewStartRatio;
-                        const centerRatio = (px - x) / w;
-                        let nStart = centerRatio - curSpan / 2;
-                        let nEnd = centerRatio + curSpan / 2;
-                        if (nStart < 0) { nEnd -= nStart; nStart = 0; }
-                        if (nEnd > 1) { nStart -= (nEnd - 1); nEnd = 1; }
-                        trendViewStartRatio = Math.max(0, nStart);
-                        trendViewEndRatio = Math.min(1, nEnd);
-                        redrawTrendCanvasOnly();
-                        overviewDragState = { mode: 'pan', startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
-                    } else {
-                        overviewDragState = { mode: hit, startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
+                    if (currentChartType === 'trend' && trendOverviewRect) {
+                        if (hit === 'jump') {
+                            const { x, w } = trendOverviewRect;
+                            const curSpan = trendViewEndRatio - trendViewStartRatio;
+                            const centerRatio = (px - x) / w;
+                            let nStart = centerRatio - curSpan / 2;
+                            let nEnd = centerRatio + curSpan / 2;
+                            if (nStart < 0) { nEnd -= nStart; nStart = 0; }
+                            if (nEnd > 1) { nStart -= (nEnd - 1); nEnd = 1; }
+                            trendViewStartRatio = Math.max(0, nStart);
+                            trendViewEndRatio = Math.min(1, nEnd);
+                            redrawTrendCanvasOnly();
+                            overviewDragState = { target: 'trend', mode: 'pan', startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
+                        } else {
+                            overviewDragState = { target: 'trend', mode: hit, startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
+                        }
+                    } else if (currentChartType !== 'trend' && klineOverviewRect && cachedFullKlines) {
+                        const totalBars = cachedFullKlines.length;
+                        if (hit === 'jump') {
+                            const { x, w } = klineOverviewRect;
+                            const clickRatio = (px - x) / w;
+                            const targetCenter = Math.round(clickRatio * totalBars);
+                            const targetStart = targetCenter - Math.round(currentVisibleCount / 2);
+                            let nv = totalBars - currentVisibleCount - targetStart;
+                            nv = Math.max(0, Math.min(totalBars - currentVisibleCount, nv));
+                            chartViewStart = nv;
+                            redrawKlineCanvasOnly();
+                            overviewDragState = { target: 'kline', mode: 'pan', startX: px, initialViewStart: chartViewStart, initialCount: currentVisibleCount, totalBars };
+                        } else {
+                            overviewDragState = { target: 'kline', mode: hit, startX: px, initialViewStart: chartViewStart, initialCount: currentVisibleCount, totalBars };
+                        }
                     }
+                    canvas.style.cursor = (hit === 'left' || hit === 'right') ? 'ew-resize' : 'grabbing';
+                    return;
+                }
+
+                // B. 主图表区域：鼠标按住左右拖动平移 (Desktop Mouse Drag & Pan)
+                if (currentChartType === 'trend') {
+                    mouseDragState = {
+                        type: 'trend-pan',
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        startLeft: trendViewStartRatio,
+                        startRight: trendViewEndRatio,
+                        moved: false
+                    };
+                } else if (cachedFullKlines && cachedFullKlines.length > 0) {
+                    mouseDragState = {
+                        type: 'kline-pan',
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        initialViewStart: chartViewStart,
+                        moved: false
+                    };
                 }
             });
 
             window.addEventListener('mousemove', (e) => {
-                if (overviewDragState && currentChartType === 'trend' && trendOverviewRect) {
-                    const rect = canvas.getBoundingClientRect();
-                    const px = e.clientX - rect.left;
-                    const dx = px - overviewDragState.startX;
-                    const dxRatio = dx / trendOverviewRect.w;
-                    const minSpan = 0.05;
+                const rect = canvas.getBoundingClientRect();
+                const px = e.clientX - rect.left;
+                const py = e.clientY - rect.top;
 
-                    if (overviewDragState.mode === 'pan') {
-                        const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
-                        let nStart = overviewDragState.startLeft + dxRatio;
-                        let nEnd = overviewDragState.startRight + dxRatio;
-                        if (nStart < 0) { nStart = 0; nEnd = span; }
-                        if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
-                        trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
-                        trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
-                    } else if (overviewDragState.mode === 'left') {
-                        trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
-                    } else if (overviewDragState.mode === 'right') {
-                        trendViewEndRatio = Math.min(1.0, Math.max(overviewDragState.startLeft + minSpan, overviewDragState.startRight + dxRatio));
+                // 拖拽底部 Overview
+                if (overviewDragState) {
+                    if (overviewDragState.target === 'trend' && trendOverviewRect) {
+                        const dx = px - overviewDragState.startX;
+                        const dxRatio = dx / trendOverviewRect.w;
+                        const minSpan = 0.05;
+                        if (overviewDragState.mode === 'pan') {
+                            const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
+                            let nStart = overviewDragState.startLeft + dxRatio;
+                            let nEnd = overviewDragState.startRight + dxRatio;
+                            if (nStart < 0) { nStart = 0; nEnd = span; }
+                            if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
+                            trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
+                            trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
+                        } else if (overviewDragState.mode === 'left') {
+                            trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
+                        } else if (overviewDragState.mode === 'right') {
+                            trendViewEndRatio = Math.min(1.0, Math.max(overviewDragState.startLeft + minSpan, overviewDragState.startRight + dxRatio));
+                        }
+                        redrawTrendCanvasOnly();
+                    } else if (overviewDragState.target === 'kline' && klineOverviewRect && cachedFullKlines) {
+                        const dx = px - overviewDragState.startX;
+                        const dxRatio = dx / klineOverviewRect.w;
+                        const total = overviewDragState.totalBars;
+                        const barDelta = Math.round(dxRatio * total);
+                        if (overviewDragState.mode === 'pan') {
+                            let nv = overviewDragState.initialViewStart - barDelta;
+                            nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
+                            if (nv !== chartViewStart) {
+                                chartViewStart = nv;
+                                redrawKlineCanvasOnly();
+                            }
+                        } else if (overviewDragState.mode === 'left') {
+                            let newCount = overviewDragState.initialCount - barDelta;
+                            newCount = Math.max(20, Math.min(total, newCount));
+                            let nv = overviewDragState.initialViewStart;
+                            nv = Math.max(0, Math.min(total - newCount, nv));
+                            currentVisibleCount = newCount;
+                            chartViewStart = nv;
+                            redrawKlineCanvasOnly();
+                        } else if (overviewDragState.mode === 'right') {
+                            let newCount = overviewDragState.initialCount + barDelta;
+                            newCount = Math.max(20, Math.min(total, newCount));
+                            let nv = overviewDragState.initialViewStart - barDelta;
+                            nv = Math.max(0, Math.min(total - newCount, nv));
+                            currentVisibleCount = newCount;
+                            chartViewStart = nv;
+                            redrawKlineCanvasOnly();
+                        }
                     }
-                    redrawTrendCanvasOnly();
                     return;
                 }
 
+                // 主图表拖拽平移 (Desktop Mouse Drag & Pan)
+                if (mouseDragState) {
+                    const dx = e.clientX - mouseDragState.startX;
+                    const dy = e.clientY - mouseDragState.startY;
+                    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                        mouseDragState.moved = true;
+                        canvas.style.cursor = 'grabbing';
+                    }
+
+                    if (mouseDragState.moved) {
+                        if (mouseDragState.type === 'kline-pan' && cachedFullKlines && cachedFullKlines.length > 0) {
+                            const stepPx = (canvas.clientWidth / currentVisibleCount) || 8;
+                            const barDelta = Math.round(dx / stepPx);
+                            const total = cachedFullKlines.length;
+                            let nv = mouseDragState.initialViewStart + barDelta;
+                            nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
+                            if (nv !== chartViewStart) {
+                                chartViewStart = nv;
+                                redrawKlineCanvasOnly();
+                            }
+                        } else if (mouseDragState.type === 'trend-pan') {
+                            const span = mouseDragState.startRight - mouseDragState.startLeft;
+                            const dxRatio = dx / (canvas.clientWidth || 800);
+                            let nStart = mouseDragState.startLeft - dxRatio;
+                            let nEnd = mouseDragState.startRight - dxRatio;
+                            if (nStart < 0) { nStart = 0; nEnd = span; }
+                            if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
+                            trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
+                            trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
+                            redrawTrendCanvasOnly();
+                        }
+                        return;
+                    }
+                }
+
+                // 正常悬浮移动：设置鼠标光标样式并显示十字线报价详情
                 if (e.target === canvas) {
-                    const rect = canvas.getBoundingClientRect();
-                    showBarInfoAtX(e.clientX - rect.left);
+                    const hit = getOverviewHit(px, py);
+                    if (hit === 'left' || hit === 'right') {
+                        canvas.style.cursor = 'ew-resize';
+                    } else if (hit === 'pan') {
+                        canvas.style.cursor = 'grab';
+                    } else {
+                        canvas.style.cursor = 'crosshair';
+                        showBarInfoAtX(px);
+                    }
                 }
             });
 
@@ -4610,11 +4789,20 @@
                 if (overviewDragState) {
                     overviewDragState = null;
                 }
+                if (mouseDragState) {
+                    mouseDragState = null;
+                }
+                if (canvas) canvas.style.cursor = 'crosshair';
             });
 
             canvas.addEventListener('mouseleave', () => {
-                if (!overviewDragState) {
-                    updateChartLegendText();
+                if (!overviewDragState && !mouseDragState) {
+                    const infoEl = document.getElementById('chart-status-text');
+                    if (currentChartType !== 'trend' && infoEl && cachedFullKlines && cachedFullKlines.length > 0) {
+                        infoEl.innerHTML = `✅ 已加载 ${cachedFullKlines.length} 根 K 线 (按住鼠标可左右拖动全景)`;
+                    } else {
+                        updateChartLegendText();
+                    }
                 }
             });
         }
@@ -5503,15 +5691,24 @@
                 ctx.lineWidth = 1;
                 ctx.strokeRect(padL, overviewTop, availW, overviewH);
 
-                // 全景缩略折线 (跨日断开，基于 N_universe 连续空间投影)
+                // 视口选框坐标
+                const vx1 = padL + trendViewStartRatio * availW;
+                const vx2 = padL + trendViewEndRatio * availW;
+                const vWidth = Math.max(12, vx2 - vx1);
+
+                // 激活视口框底色高亮 (选区内淡蓝半透明背景)
+                ctx.fillStyle = 'rgba(56, 139, 253, 0.16)';
+                ctx.fillRect(vx1, overviewTop, vWidth, overviewH);
+
+                // 全景缩略折线 (历史与视口全段高亮清晰呈现，跨日断开，基于 N_universe 连续空间投影)
                 const allP = allBars.map(b => b.price);
                 const aMin = Math.min(...allP);
                 const aMax = Math.max(...allP);
                 const aDiff = (aMax - aMin) || 1;
 
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(88, 166, 255, 0.60)';
-                ctx.lineWidth = 1.1;
+                ctx.strokeStyle = 'rgba(88, 166, 255, 0.75)';
+                ctx.lineWidth = 1.2;
                 for (let i = 0; i < allBars.length; i++) {
                     const ox = padL + (i / (N_universe - 1)) * availW;
                     const normY = (allBars[i].price - aMin) / aDiff;
@@ -5522,7 +5719,7 @@
                 ctx.stroke();
 
                 // 在 Overview 上标注日分界虚线
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
                 ctx.lineWidth = 1;
                 for (let i = 1; i < allBars.length; i++) {
                     if (allBars[i].isDayStart) {
@@ -5534,32 +5731,18 @@
                     }
                 }
 
-                // 视口选框坐标
-                const vx1 = padL + trendViewStartRatio * availW;
-                const vx2 = padL + trendViewEndRatio * availW;
-                const vWidth = Math.max(12, vx2 - vx1);
-
-                // 左右两侧暗色遮罩
-                ctx.fillStyle = 'rgba(5, 9, 15, 0.75)';
-                if (vx1 > padL) {
-                    ctx.fillRect(padL, overviewTop, vx1 - padL, overviewH);
-                }
-                if (vx2 < padL + availW) {
-                    ctx.fillRect(vx2, overviewTop, (padL + availW) - vx2, overviewH);
-                }
-
-                // 激活视口框 (高亮蓝边 + 微弱半透明填充)
-                ctx.fillStyle = 'rgba(56, 139, 253, 0.18)';
-                ctx.fillRect(vx1, overviewTop, vWidth, overviewH);
-                ctx.strokeStyle = '#58a6ff';
-                ctx.lineWidth = 1.5;
+                // 激活视口框边框 (精致清晰)
+                ctx.strokeStyle = 'rgba(88, 166, 255, 0.85)';
+                ctx.lineWidth = 1.2;
                 ctx.strokeRect(vx1, overviewTop, vWidth, overviewH);
 
-                // 左右调节把手
-                const handleW = 5;
-                ctx.fillStyle = '#79c0ff';
-                ctx.fillRect(vx1, overviewTop + 3, handleW, overviewH - 6);
-                ctx.fillRect(vx2 - handleW, overviewTop + 3, handleW, overviewH - 6);
+                // 左右调节把手：细腻微手柄 (不喧宾夺主，不干扰视线)
+                const handleW = 2;
+                const gripH = Math.max(10, overviewH - 10);
+                const gripY = overviewTop + (overviewH - gripH) / 2;
+                ctx.fillStyle = 'rgba(121, 192, 255, 0.75)';
+                ctx.fillRect(vx1 + 1, gripY, handleW, gripH);
+                ctx.fillRect(vx2 - handleW - 1, gripY, handleW, gripH);
 
                 // 缓存 Overview 几何位置
                 trendOverviewRect = {
@@ -5820,25 +6003,36 @@
             const topP = maxP + pad;
             const botP = minP - pad;
 
-            // 独立时间轴布局 (彻底隔离成交量副图与时间轴)
-            const timeAxisH = m.timeAxisH;
-            const chartAvailableH = h - timeAxisH;
+            // 尺寸分层布局 (自底向上：Overview 迷你小地图 -> 独立时间轴 -> 成交量副图 -> K 线主图)
+            const overviewH = m.mobile ? 24 : 28;
+            const overviewBottom = h - 6;
+            const overviewTop = overviewBottom - overviewH;
+
+            const timeAxisH = m.mobile ? 20 : 18;
+            const timeAxisBottom = overviewTop - 4;
+            const timeAxisTop = timeAxisBottom - timeAxisH;
+
+            const chartAvailableH = timeAxisTop;
             const mainH = chartAvailableH * 0.72;
-            const volTop = mainH + 12;
+            const volTop = mainH + 8;
             const volH = chartAvailableH - volTop;
             const volBottom = chartAvailableH;
 
-            const step = w / count;
+            const padL = 6;
+            const padR = 8;
+            const availW = w - padL - padR;
+
+            const step = availW / count;
             const barWidth = Math.max(m.barWMin, Math.min(m.barWMax, step * m.barWRatio));
 
             // 绘制独立时间轴底色与顶部分隔线 (彻底隔绝红绿成交量柱)
             ctx.fillStyle = '#080c12';
-            ctx.fillRect(0, chartAvailableH, w, timeAxisH);
+            ctx.fillRect(padL, timeAxisTop, availW, timeAxisH);
             ctx.strokeStyle = '#1a2738';
             ctx.lineWidth = m.lwAxis;
             ctx.beginPath();
-            ctx.moveTo(0, chartAvailableH);
-            ctx.lineTo(w, chartAvailableH);
+            ctx.moveTo(padL, timeAxisTop);
+            ctx.lineTo(padL + availW, timeAxisTop);
             ctx.stroke();
 
             // 网格线与价格刻度
@@ -5847,15 +6041,15 @@
             for (let i = 0; i <= 4; i++) {
                 const y = (mainH / 4) * i;
                 ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(w, y);
+                ctx.moveTo(padL, y);
+                ctx.lineTo(padL + availW, y);
                 ctx.stroke();
 
                 const curP = topP - ((topP - botP) / 4) * i;
                 ctx.fillStyle = '#8b9db7';
                 ctx.font = FONT;
                 ctx.textAlign = 'right';
-                ctx.fillText(curP.toFixed(1), w - 8, y - 4);
+                ctx.fillText(curP.toFixed(1), padL + availW - 6, y - 4);
             }
 
             // 寻找【今日交易开始点】(仅在分钟图绘制，日线不绘制)
@@ -5873,9 +6067,9 @@
                 }
 
                 if (todayStartIndex > 0) {
-                    const todayStartX = todayStartIndex * step;
+                    const todayStartX = padL + todayStartIndex * step;
                     ctx.fillStyle = 'rgba(56, 139, 253, 0.04)';
-                    ctx.fillRect(todayStartX, 0, w - todayStartX, chartAvailableH);
+                    ctx.fillRect(todayStartX, 0, (padL + availW) - todayStartX, chartAvailableH);
                 }
             }
 
@@ -5885,7 +6079,7 @@
 
             visibleBars.forEach((k, idx) => {
                 const dayStr = k.date.split(' ')[0];
-                const x = idx * step;
+                const x = padL + idx * step;
                 if (prevDay && dayStr !== prevDay && isMinuteChart) {
                     const isTodayDivider = (dayStr === latestDate);
 
@@ -5912,7 +6106,7 @@
                         ctx.fillStyle = '#e3b341';
                         ctx.font = 'bold ' + FONT;
                         ctx.textAlign = 'center';
-                        ctx.fillText(labelText, x, chartAvailableH + 15);
+                        ctx.fillText(labelText, x, timeAxisTop + (m.mobile ? 14 : 13));
                         lastLabelX = x + 35;
                     } else {
                         // 历史各交易日分界线 (极细暗色虚线)
@@ -5926,11 +6120,11 @@
                         ctx.setLineDash([]);
 
                         // 智能防重叠抽稀算法：仅当水平间距足够时才绘制日期文字
-                        if (x - lastLabelX >= (m.mobile ? 50 : 65) && w - x >= 30 && x >= 25) {
+                        if (x - lastLabelX >= (m.mobile ? 50 : 65) && (padL + availW) - x >= 30 && x >= padL + 25) {
                             ctx.fillStyle = '#58a6ff';
                             ctx.font = FONT;
                             ctx.textAlign = 'center';
-                            ctx.fillText(dayStr.substring(5), x, chartAvailableH + 15);
+                            ctx.fillText(dayStr.substring(5), x, timeAxisTop + (m.mobile ? 14 : 13));
                             lastLabelX = x;
                         }
                     }
@@ -5942,12 +6136,12 @@
             if (isDay) {
                 let lastDayLabelX = -999;
                 visibleBars.forEach((k, idx) => {
-                    const x = idx * step + step / 2;
-                    if (x - lastDayLabelX >= (m.mobile ? 55 : 70) && w - x >= 30 && x >= 25) {
+                    const x = padL + idx * step + step / 2;
+                    if (x - lastDayLabelX >= (m.mobile ? 55 : 70) && (padL + availW) - x >= 30 && x >= padL + 25) {
                         ctx.fillStyle = '#58a6ff';
                         ctx.font = FONT;
                         ctx.textAlign = 'center';
-                        ctx.fillText(k.date.substring(5), x, chartAvailableH + 15);
+                        ctx.fillText(k.date.substring(5), x, timeAxisTop + (m.mobile ? 14 : 13));
                         lastDayLabelX = x;
                     }
                 });
@@ -5955,7 +6149,7 @@
 
             // 绘制 K 柱与影线 (主图区域：空心阳线 + 实心阴线，清爽透气，彻底消除拥挤感)
             visibleBars.forEach((k, idx) => {
-                const x = idx * step + step / 2;
+                const x = padL + idx * step + step / 2;
                 const isUp = k.close >= k.open;
                 const isDoji = Math.abs(k.close - k.open) < 0.0001;
 
@@ -5970,16 +6164,13 @@
 
                 if (isUp && !isDoji) {
                     // ===== 空心阳线 (Hollow Red Candle) =====
-                    // 1. 底色填充，干净隔绝背景网格与均线
                     ctx.fillStyle = '#080c12';
                     ctx.fillRect(bx, topY, barWidth, bHeight);
 
-                    // 2. 红色空心边框
                     ctx.strokeStyle = '#f85149';
                     ctx.lineWidth = m.lwWick;
                     ctx.strokeRect(bx, topY, barWidth, bHeight);
 
-                    // 3. 影线：上影线连接最高点至实体顶端，下影线连接实体底端至最低点（不穿透中空体）
                     ctx.beginPath();
                     if (yHigh < topY) {
                         ctx.moveTo(x, yHigh);
@@ -5991,7 +6182,6 @@
                     }
                     ctx.stroke();
                 } else if (isDoji) {
-                    // 十字星 (平盘线)
                     ctx.strokeStyle = '#8b9db7';
                     ctx.lineWidth = m.lwWick;
                     ctx.beginPath();
@@ -6022,7 +6212,7 @@
                 let started = false;
                 visibleBars.forEach((k, idx) => {
                     if (k[key]) {
-                        const x = idx * step + step / 2;
+                        const x = padL + idx * step + step / 2;
                         const y = mainH - ((k[key] - botP) / (topP - botP)) * mainH;
                         if (!started) { ctx.moveTo(x, y); started = true; }
                         else ctx.lineTo(x, y);
@@ -6038,7 +6228,7 @@
             // 成交量副图 (严格绘制在 volTop 与 volBottom 之间，绝不与时间轴文字撞车)
             const maxVol = Math.max(...visibleBars.map(k => k.vol)) || 1;
             visibleBars.forEach((k, idx) => {
-                const x = idx * step + step / 2;
+                const x = padL + idx * step + step / 2;
                 const bH = Math.max(1, (k.vol / maxVol) * volH);
                 const isUp = k.close >= k.open;
                 const bx = x - barWidth / 2;
@@ -6054,8 +6244,91 @@
                 }
             });
 
-            // 挂载鼠标悬停十字光标事件
-            activeRenderData = { klines: visibleBars, step, topP, botP, mainH, h, w };
+            // 底部 TradingView 风格 K 线 Overview 迷你小地图 (展示全部历史 K 线的全景缩略)
+            if (cachedFullKlines && cachedFullKlines.length > 1) {
+                const totalBars = cachedFullKlines.length;
+                ctx.fillStyle = '#070b10';
+                ctx.fillRect(padL, overviewTop, availW, overviewH);
+                ctx.strokeStyle = '#182433';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(padL, overviewTop, availW, overviewH);
+
+                // 视口在全景中的映射范围
+                const startRatio = Math.max(0, _start / totalBars);
+                const endRatio = Math.min(1, _end / totalBars);
+                const vx1 = padL + startRatio * availW;
+                const vx2 = padL + endRatio * availW;
+                const vWidth = Math.max(12, vx2 - vx1);
+
+                // 激活视口框底色高亮 (选区内淡蓝半透明背景)
+                ctx.fillStyle = 'rgba(56, 139, 253, 0.16)';
+                ctx.fillRect(vx1, overviewTop, vWidth, overviewH);
+
+                // 全量收盘价折线 (清晰明亮，全段展示)
+                const closes = cachedFullKlines.map(k => k.close);
+                const kMin = Math.min(...closes);
+                const kMax = Math.max(...closes);
+                const kDiff = (kMax - kMin) || 1;
+
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(88, 166, 255, 0.75)';
+                ctx.lineWidth = 1.2;
+                for (let i = 0; i < totalBars; i++) {
+                    const ox = padL + (i / (totalBars - 1)) * availW;
+                    const normY = (cachedFullKlines[i].close - kMin) / kDiff;
+                    const oy = (overviewBottom - 3) - normY * (overviewH - 6);
+                    if (i === 0) ctx.moveTo(ox, oy);
+                    else ctx.lineTo(ox, oy);
+                }
+                ctx.stroke();
+
+                // 日分界线标注 (仅在分钟图下有效)
+                if (isMinuteChart) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                    ctx.lineWidth = 1;
+                    let lastDay = '';
+                    for (let i = 0; i < totalBars; i++) {
+                        const day = (cachedFullKlines[i].date || '').split(' ')[0];
+                        if (lastDay && day !== lastDay) {
+                            const ox = padL + (i / (totalBars - 1)) * availW;
+                            ctx.beginPath();
+                            ctx.moveTo(ox, overviewTop);
+                            ctx.lineTo(ox, overviewBottom);
+                            ctx.stroke();
+                        }
+                        lastDay = day;
+                    }
+                }
+
+                // 激活视口框边框 (精致清晰)
+                ctx.strokeStyle = 'rgba(88, 166, 255, 0.85)';
+                ctx.lineWidth = 1.2;
+                ctx.strokeRect(vx1, overviewTop, vWidth, overviewH);
+
+                // 左右调节细握柄
+                const handleW = 2;
+                const gripH = Math.max(10, overviewH - 10);
+                const gripY = overviewTop + (overviewH - gripH) / 2;
+                ctx.fillStyle = 'rgba(121, 192, 255, 0.75)';
+                ctx.fillRect(vx1 + 1, gripY, handleW, gripH);
+                ctx.fillRect(vx2 - handleW - 1, gripY, handleW, gripH);
+
+                // 记录 K 线 Overview 几何布局用于拖拽
+                klineOverviewRect = {
+                    x: padL,
+                    y: overviewTop,
+                    w: availW,
+                    h: overviewH,
+                    vx1,
+                    vx2,
+                    totalBars
+                };
+            } else {
+                klineOverviewRect = null;
+            }
+
+            // 挂载鼠标与触控联动数据
+            activeRenderData = { klines: visibleBars, step, topP, botP, mainH, h, w, padL };
             bindCanvasHover(canvas);
 
             updateChartLegendText();
@@ -6090,41 +6363,9 @@
             }
         }
 
-        // 鼠标悬停实时展示 K 柱详情
-        let hoverBound = false;
+        // 鼠标悬停实时展示 K 柱详情 (已由 bindChartTouch 统一接管全局光标、拖拽与十字线联动)
         function bindCanvasHover(canvas) {
-            if (hoverBound) return;
-            hoverBound = true;
-
-            canvas.addEventListener('mousemove', (e) => {
-                if (!activeRenderData || currentChartType === 'trend') return;
-                const rect = canvas.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const { klines, step } = activeRenderData;
-                const idx = Math.floor(mouseX / step);
-                if (idx >= 0 && idx < klines.length) {
-                    const k = klines[idx];
-                    const isUp = k.close >= k.open;
-                    const infoEl = document.getElementById('chart-status-text');
-                    if (infoEl) {
-                        infoEl.innerHTML = `
-                            <span>${k.date}</span> | 
-                            <span>开: ${k.open}</span> 
-                            <span>高: ${k.high}</span> 
-                            <span>低: ${k.low}</span> 
-                            <span style="color:${isUp ? '#f85149':'#2ea043'}; font-weight:bold;">收: ${k.close}</span> | 
-                            <span>量: ${k.vol}手</span>
-                        `;
-                    }
-                }
-            });
-
-            canvas.addEventListener('mouseleave', () => {
-                const infoEl = document.getElementById('chart-status-text');
-                if (infoEl && activeRenderData) {
-                    infoEl.innerHTML = `✅ 已成功加载 ${activeRenderData.klines.length} 根 K 柱 (移动光标查看具体明细)`;
-                }
-            });
+            // 保持向前兼容调用接口
         }
 
         function calcMA(list, idx, n) {
