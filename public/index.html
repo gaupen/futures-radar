@@ -3694,7 +3694,15 @@
             // 按槽位递增排序
             rawList.sort((a, b) => a.slotIdx - b.slotIdx);
 
-            const prePrice = activeModalQuote.prevSettle || rawList[0].price;
+            // 期货官方涨跌幅以昨结算价为基准：现价 - 涨跌额 = 官方昨结算价 (100% 严密对齐官方涨跌幅)
+            let prePrice = 0;
+            if (activeModalQuote && activeModalQuote.price > 0 && typeof activeModalQuote.change === 'number') {
+                prePrice = activeModalQuote.price - activeModalQuote.change;
+            }
+            if (!prePrice || prePrice <= 0) {
+                prePrice = (activeModalQuote && activeModalQuote.prevSettle > 0) ? activeModalQuote.prevSettle : rawList[0].price;
+            }
+
             const prices = rawList.map(d => d.price);
             const maxP = Math.max(...prices, prePrice);
             const minP = Math.min(...prices, prePrice);
@@ -3862,12 +3870,24 @@
             }
 
             // 成交量副图 (基于固定时间槽位，恒定精致宽度，底端止于 volBottom)
+            // 行业金融标准：逐分钟对比前一分钟价格 (当前价 > 上分价 = 红柱推动，当前价 < 上分价 = 绿柱打压，平价沿用)
             const maxVol = Math.max(...rawList.map(d => d.vol)) || 1;
             const barW = Math.max(1, Math.min(3.5, (availW / totalM) * 0.85));
-            rawList.forEach(d => {
+            rawList.forEach((d, idx) => {
                 const x = getX(d.slotIdx);
                 const bH = (d.vol / maxVol) * volH;
-                ctx.fillStyle = d.price >= prePrice ? '#f85149' : '#2ea043';
+
+                let isUp = true;
+                if (idx === 0) {
+                    isUp = d.price >= prePrice;
+                } else {
+                    const prevP = rawList[idx - 1].price;
+                    if (d.price > prevP) isUp = true;
+                    else if (d.price < prevP) isUp = false;
+                    else isUp = (idx > 0 && rawList[idx - 1].isUp !== undefined) ? rawList[idx - 1].isUp : true;
+                }
+                d.isUp = isUp;
+                ctx.fillStyle = isUp ? '#f85149' : '#2ea043';
                 ctx.fillRect(x - barW / 2, volBottom - bH, barW, bH);
             });
 
@@ -4221,10 +4241,14 @@
             if (!legendEl || !activeModalSecId) return;
 
             if (currentChartType === 'trend') {
+                const benchP = (activeModalQuote && activeModalQuote.price > 0 && typeof activeModalQuote.change === 'number')
+                    ? (activeModalQuote.price - activeModalQuote.change).toFixed(1)
+                    : (activeModalQuote && activeModalQuote.prevSettle > 0 ? activeModalQuote.prevSettle.toFixed(1) : '--');
+
                 legendEl.innerHTML = `
                     <div class="legend-item"><span class="legend-dot" style="background:#f0f6fc;"></span><span>实时价格白线</span></div>
                     <div class="legend-item"><span class="legend-dot" style="background:#f1c40f;"></span><span>均价线 (VWAP)</span></div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#6e839e;"></span><span>昨结基准: ${activeModalQuote ? activeModalQuote.prevSettle : '--'}</span></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#6e839e;"></span><span>昨结基准: ${benchP}</span></div>
                 `;
             } else {
                 const kName = currentChartType === '5' ? '5分钟K' :
