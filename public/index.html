@@ -1405,7 +1405,7 @@
             const low = parseFloat(parts[5]) || 0;
             const prevClose = parseFloat(parts[7]) || 0;
             const open = parseFloat(parts[8]) || 0;
-            const name = parts[13] || (meta ? meta.name : sym);
+            const name = (meta && meta.name) ? meta.name : (parts[13] || sym);
             if (price <= 0) return null;
             const change = prevClose > 0 ? (price - prevClose) : 0;
             const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
@@ -1433,7 +1433,7 @@
         function parseUsStockQuote(sym, line, meta) {
             const parts = line.split(',');
             if (parts.length < 11) return null;
-            const name = parts[0] || (meta ? meta.name : sym);
+            const name = (meta && meta.name) ? meta.name : (parts[0] || sym);
             const price = parseFloat(parts[1]) || 0;
             const changePercent = parseFloat(parts[2]) || 0;
             const change = parseFloat(parts[4]) || 0;
@@ -1467,7 +1467,7 @@
         function parseHkStockQuote(sym, line, meta) {
             const parts = line.split(',');
             if (parts.length < 13) return null;
-            const name = parts[1] || parts[0] || (meta ? meta.name : sym);
+            const name = (meta && meta.name) ? meta.name : (parts[1] || parts[0] || sym);
             const open = parseFloat(parts[2]) || 0;
             const prevClose = parseFloat(parts[3]) || 0;
             const high = parseFloat(parts[4]) || 0;
@@ -2051,6 +2051,17 @@
             return m ? m[1] : '';
         }
 
+        const VARIETY_CHINESE_NAMES = {
+            'rb': '螺纹钢', 'hc': '热轧卷板', 'i': '铁矿石', 'j': '焦炭', 'jm': '焦煤', 'ss': '不锈钢', 'wr': '线材',
+            'fu': '燃料油', 'lu': '低硫燃油', 'bu': '沥青', 'sc': '原油', 'pg': '液化气',
+            'cu': '沪铜', 'al': '沪铝', 'zn': '沪锌', 'pb': '沪铅', 'ni': '沪镍', 'sn': '沪锡', 'ao': '氧化铝', 'bc': '国际铜',
+            'au': '沪金', 'ag': '沪银', 'ec': '集运欧线', 'br': '丁二烯橡胶',
+            'm': '豆粕', 'y': '豆油', 'a': '豆一', 'b': '豆二', 'p': '棕榈油', 'c': '玉米', 'cs': '玉米淀粉', 'jd': '鸡蛋', 'lh': '生猪', 'pk': '花生', 'oi': '菜油', 'rm': '菜粕', 'rs': '菜籽',
+            'ru': '天然橡胶', 'nr': '20号胶', 'sp': '纸浆', 'ta': 'PTA', 'eg': '乙二醇', 'ma': '甲醇', 'pp': '聚丙烯', 'l': '塑料', 'v': 'PVC', 'eb': '苯乙烯', 'ur': '尿素', 'sa': '纯碱', 'sh': '烧碱', 'px': '对二甲苯', 'pf': '短纤', 'pr': '瓶片',
+            'cf': '棉花', 'sr': '白糖', 'cy': '棉纱', 'ap': '苹果', 'cj': '红枣', 'si': '工业硅', 'lc': '碳酸锂', 'fg': '玻璃', 'sf': '硅铁', 'sm': '锰硅',
+            'if': '沪深300', 'ih': '上证50', 'ic': '中证500', 'im': '中证1000', 'tf': '五债', 't': '十债', 'ts': '二债', 'tl': '三十债'
+        };
+
         // 按品种对异动合约进行聚合收拢 (同一品种仅出一张代表卡片，附带活跃月份列表)
         function groupQuotesByVariety(quotes) {
             if (!Array.isArray(quotes) || quotes.length === 0) return [];
@@ -2062,8 +2073,17 @@
                 if (!sym) return;
 
                 if (!map.has(sym)) {
-                    // 提取基础品种名 (例如 "碳酸锂2705" -> "碳酸锂", "螺纹2612" -> "螺纹")
-                    const baseName = (q.name || '').replace(/\d+$/, '').trim() || sym.toUpperCase();
+                    // 权威品种标准名映射 > 上游返回名称清理 > 代码大写兜底
+                    const stdName = VARIETY_CHINESE_NAMES[sym.toLowerCase()];
+                    let baseName = stdName;
+                    if (!baseName) {
+                        const clean = (q.name || '').replace(/\d+$/, '').trim();
+                        if (clean && !clean.includes('\uFFFD') && !/^[\?\s\d]+$/.test(clean)) {
+                            baseName = clean;
+                        } else {
+                            baseName = sym.toUpperCase();
+                        }
+                    }
                     map.set(sym, {
                         variety: sym,
                         name: baseName,
@@ -3055,9 +3075,18 @@
                     const parts = line.split(',');
                     if (parts.length < 15) continue;
 
-                    const name = parts[0] || (item.code ? item.code.toUpperCase() : '');
+                    let name = parts[0] || (item.code ? item.code.toUpperCase() : '');
                     const code = item.code || '';
                     const secid = item.secid || (item.market + '.' + code);
+
+                    // 权威品种名兜底保护，绝对杜绝 锟斤拷 或 黑菱形问号
+                    const varietySym = parseVarietySymbol(code);
+                    const monthDigits = (code.match(/\d+/) || [''])[0];
+                    if (VARIETY_CHINESE_NAMES[varietySym.toLowerCase()]) {
+                        if (!name || name.includes('\uFFFD') || /^[\?\s\d]+$/.test(name)) {
+                            name = VARIETY_CHINESE_NAMES[varietySym.toLowerCase()] + monthDigits;
+                        }
+                    }
 
                     // 1. 物理合约过滤：必须带具体年份月份，杜绝主连/主力/指数/当月/临近交割
                     if (!isPhysicalContract(name, code)) continue;
@@ -3747,11 +3776,25 @@
                         : `<span class="tag-night-active" title="夜盘活跃撮合中 (最后成交: ${tradeTimeStr})">🌙 夜盘</span>`)
                     : '';
 
+                let cardName = data.name;
+                if (!cardName || cardName.includes('\uFFFD') || /^[\?\s\d]+$/.test(cardName)) {
+                    const meta = ASSET_CATALOG.find(a => a.id === data.secid || a.symbol === data.code);
+                    if (meta && meta.name) {
+                        cardName = meta.name;
+                    } else {
+                        const vSym = parseVarietySymbol(data.code || data.secid);
+                        const mDigits = ((data.code || data.secid).match(/\d+/) || [''])[0];
+                        if (VARIETY_CHINESE_NAMES[vSym.toLowerCase()]) {
+                            cardName = VARIETY_CHINESE_NAMES[vSym.toLowerCase()] + mDigits;
+                        }
+                    }
+                }
+
                 return `
                 <div class="card" id="card-${data.secid}" onclick="openChartModal('${data.secid}')">
                     <div class="card-header">
                         <div class="contract-info">
-                            <span class="contract-name">${data.name}</span>
+                            <span class="contract-name">${cardName || data.name}</span>
                             ${marketBadge}
                             ${sessionTagHtml}
                             <span class="contract-code">${data.secid}</span>
@@ -4088,7 +4131,20 @@
             // 确保 PWA 路由守卫栈处于就绪状态
             initPwaHistoryGuard();
 
-            document.getElementById('modal-name').textContent = quote.name;
+            let displayName = quote.name;
+            if (!displayName || displayName.includes('\uFFFD') || /^[\?\s\d]+$/.test(displayName)) {
+                const meta = ASSET_CATALOG.find(a => a.id === quote.secid || a.symbol === quote.code);
+                if (meta && meta.name) {
+                    displayName = meta.name;
+                } else {
+                    const vSym = parseVarietySymbol(quote.code || quote.secid);
+                    const mDigits = ((quote.code || quote.secid).match(/\d+/) || [''])[0];
+                    if (VARIETY_CHINESE_NAMES[vSym.toLowerCase()]) {
+                        displayName = VARIETY_CHINESE_NAMES[vSym.toLowerCase()] + mDigits;
+                    }
+                }
+            }
+            document.getElementById('modal-name').textContent = displayName || quote.name || quote.secid;
             document.getElementById('modal-code').textContent = quote.secid;
 
             const sessionTagEl = document.getElementById('modal-tag-session');

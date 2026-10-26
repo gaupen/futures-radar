@@ -114,7 +114,8 @@ async function fetchSinaSnapshotRaw() {
         }
       });
       if (!resp.ok) continue;
-      const text = await resp.text();
+      const buf = await resp.arrayBuffer();
+      const text = new TextDecoder("gb18030").decode(buf);
       const lines = text.split("\n");
 
       const itemMap = new Map();
@@ -298,8 +299,8 @@ var index_default = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
           }
         });
-        const text = await sinaResp.text();
-        return new Response(text, {
+        return new Response(sinaResp.body, {
+          status: sinaResp.status,
           headers: {
             "content-type": "application/javascript; charset=gb18030",
             "cache-control": "no-cache, no-store",
