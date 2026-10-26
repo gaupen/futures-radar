@@ -1,0 +1,4110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>期货真实交割合约异动雷达 | Futures Physical Terminal</title>
+
+    <!-- PWA & Mobile Web App 核心规范 -->
+    <meta name="description" content="国内商品期货真实交割合约多维异动雷达与移动端实时监控终端">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="color-scheme" content="dark">
+
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest">
+
+    <!-- Apple iOS Safari 原生全屏桌面化适配 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="期货雷达">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <style>
+        :root {
+            --bg-primary: #070b10;
+            --bg-card: #0e1520;
+            --bg-card-hover: #152233;
+            --bg-modal: #0b121b;
+            --border-color: #213247;
+            --border-highlight: #3b5577;
+            --text-primary: #ffffff;
+            --text-secondary: #a3b5ce;
+            --text-muted: #6e839e;
+            --accent-color: #58a6ff;
+            --accent-glow: rgba(88, 166, 255, 0.35);
+            --up-color: #ff5c52;
+            --up-bg: rgba(255, 92, 82, 0.18);
+            --down-color: #38c858;
+            --down-bg: rgba(56, 200, 88, 0.18);
+            --flat-color: #9cb1cc;
+            --flat-bg: rgba(156, 177, 204, 0.12);
+            --font-mono: 'Maple Mono NF CN', 'Sarasa Mono SC', 'Cascadia Code', Consolas, monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            overscroll-behavior: none;
+            overscroll-behavior-x: none;
+            overscroll-behavior-y: none;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overscroll-behavior: none;
+            overscroll-behavior-x: none;
+            overscroll-behavior-y: none;
+            touch-action: pan-y; /* 仅允许纵向滚动，彻底屏蔽 Chromium 默认横向边界导航手势与滑动阻尼 */
+        }
+
+        /* 顶部极简紧凑顶栏 (40~42px，释放 70%+ 屏幕纵深) */
+        .compact-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            padding: 6px 14px;
+            border-radius: 8px 8px 0 0;
+            min-height: 42px;
+            gap: 10px;
+            user-select: none;
+        }
+
+        .compact-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .compact-logo {
+            font-size: 16px;
+        }
+
+        .compact-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #58a6ff;
+            letter-spacing: 0.3px;
+            margin: 0;
+            padding: 0;
+        }
+
+        .compact-header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .compact-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #141e2b;
+            border: 1px solid var(--border-color);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
+        }
+
+        .pill-dot {
+            font-size: 11px;
+            line-height: 1;
+        }
+
+        .compact-icon-btn {
+            background: #141e2b;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            min-height: 32px;
+        }
+
+        .compact-icon-btn:hover {
+            background: #1f2d3f;
+            border-color: var(--border-highlight);
+        }
+
+        .compact-icon-btn.active {
+            background: #1f6feb;
+            color: #ffffff;
+            border-color: #388bfd;
+            box-shadow: 0 0 8px rgba(31, 111, 235, 0.4);
+        }
+
+        /* 2px 极细发丝级倒计时进度条 (纯净极简，绝不晃眼) */
+        .hairline-progress-track {
+            width: 100%;
+            height: 2px;
+            background: #090e15;
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            border-radius: 0 0 8px 8px;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 2px;
+        }
+
+        .hairline-progress-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #1f6feb 0%, #388bfd 65%, #58a6ff 100%);
+            transition: width 1s linear;
+        }
+
+        /* 统计与状态徽章 */
+        .stat-badge {
+            padding: 3px 8px;
+            border-radius: 5px;
+            background: #141e2b;
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .stat-up { color: var(--up-color); font-weight: bold; }
+        .stat-down { color: var(--down-color); font-weight: bold; }
+
+        .select-control {
+            background: #141e2b;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            outline: none;
+        }
+
+        .select-control:hover {
+            background: #1c2b3d;
+            border-color: var(--border-highlight);
+        }
+
+        /* 全局置顶涨跌幅门禁组 */
+        .threshold-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #090e15;
+            padding: 2px 6px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            font-size: 11px;
+            font-family: var(--font-mono);
+        }
+
+        .threshold-label {
+            color: var(--text-muted);
+            margin-right: 2px;
+        }
+
+        .threshold-chip {
+            padding: 3px 7px;
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 700;
+            transition: all 0.2s ease;
+        }
+
+        .threshold-chip:hover {
+            background: #1a2738;
+            color: var(--text-primary);
+        }
+
+        .threshold-chip.active {
+            background: #1f6feb;
+            color: #ffffff;
+            box-shadow: 0 0 6px rgba(56, 139, 253, 0.6);
+        }
+
+        .level2-badge {
+            padding: 2px 9px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #0d1a29;
+            border: 1px solid #1f6feb;
+            color: #58a6ff;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.25s ease;
+            font-family: var(--font-mono);
+        }
+
+        .level2-badge.flash {
+            background: rgba(0, 242, 254, 0.25);
+            border-color: #00f2fe;
+            color: #ffffff;
+            box-shadow: 0 0 12px rgba(0, 242, 254, 0.8), 0 0 4px #ffffff;
+            transform: scale(1.08);
+            animation: badgeFlashAnim 0.4s ease-out;
+        }
+
+        @keyframes badgeFlashAnim {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.15); filter: brightness(1.6); }
+            100% { transform: scale(1.08); filter: brightness(1); }
+        }
+
+        .filter-summary-text {
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-family: var(--font-mono);
+        }
+
+        /* 可折叠设置抽屉面板 */
+        .settings-drawer {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 14px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            margin-bottom: 6px;
+            animation: drawerSlideDown 0.22s ease-out;
+        }
+
+        @keyframes drawerSlideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .drawer-content {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .drawer-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .drawer-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .drawer-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .drawer-stats {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .drawer-status-text {
+            font-size: 11px;
+            font-family: var(--font-mono);
+            color: #58a6ff;
+        }
+
+        .drawer-footer-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .drawer-source-banner {
+            flex: 1;
+            font-size: 11px;
+            color: var(--text-secondary);
+            padding: 5px 10px;
+            border-radius: 6px;
+            background: #141e2b;
+            border: 1px solid var(--border-color);
+        }
+
+        .drawer-refresh-btn {
+            flex: 0 0 auto;
+            font-size: 12px;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #141e2b;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .drawer-refresh-btn:hover {
+            background: #1f2d3f;
+            border-color: var(--border-highlight);
+        }
+
+        .progress-node-pin { display: none; }
+
+        /* 异动雷达双Tab分类栏 (1:1等宽，纯粹极简) */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .dual-tab-group {
+            display: flex;
+            width: 100%;
+            gap: 6px;
+        }
+
+        .dual-tab-group .tab-btn {
+            flex: 1;
+            text-align: center;
+            padding: 8px 12px;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 6px;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .dual-tab-group .tab-btn:hover {
+            background: #141e2b;
+            color: var(--text-primary);
+        }
+
+        .dual-tab-group .tab-btn.active {
+            background: #1f6feb;
+            color: #ffffff;
+            border-color: #388bfd;
+            box-shadow: 0 0 10px rgba(31, 111, 235, 0.4);
+        }
+
+        /* 卡片内多月份胶囊标签栏 */
+        .month-pills {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+            margin-bottom: 4px;
+        }
+
+        .month-pill {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 12px;
+            background: #141e2b;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 26px;
+        }
+
+        .month-pill:hover {
+            background: #1c2b3d;
+            color: var(--text-primary);
+            border-color: var(--border-highlight);
+        }
+
+        .month-pill.active {
+            background: rgba(88, 166, 255, 0.22);
+            color: #58a6ff;
+            border-color: #58a6ff;
+            box-shadow: 0 0 6px rgba(88, 166, 255, 0.35);
+        }
+
+        .month-pill.is-lead {
+            font-weight: 800;
+        }
+
+        .month-pill.pill-up {
+            color: var(--up-color);
+        }
+        .month-pill.pill-down {
+            color: var(--down-color);
+        }
+        .month-pill.active.pill-up {
+            background: var(--up-bg);
+            border-color: var(--up-color);
+            color: #ff7b72;
+            box-shadow: 0 0 6px rgba(255, 92, 82, 0.4);
+        }
+        .month-pill.active.pill-down {
+            background: var(--down-bg);
+            border-color: var(--down-color);
+            color: #56d364;
+            box-shadow: 0 0 6px rgba(56, 200, 88, 0.4);
+        }
+
+        /* 卡片容器与卡片样式 */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+            width: 100%;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: var(--border-highlight);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+            background: var(--bg-card-hover);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .contract-info {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .contract-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .contract-code {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .tag-physical {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: #0d2136;
+            border: 1px solid #1f6feb;
+            color: #58a6ff;
+            line-height: 1.2;
+        }
+
+        .tag-stale {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: rgba(110, 131, 158, 0.15);
+            border: 1px solid rgba(110, 131, 158, 0.35);
+            color: #9cb1cc;
+            line-height: 1.2;
+        }
+
+        .tag-night-active {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: rgba(88, 166, 255, 0.15);
+            border: 1px solid rgba(88, 166, 255, 0.4);
+            color: #58a6ff;
+            line-height: 1.2;
+        }
+
+        .header-pnl-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .change-badge {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            letter-spacing: 0.2px;
+        }
+
+        .is-up-badge { background: var(--up-bg); color: var(--up-color); border: 1px solid rgba(248, 81, 73, 0.35); }
+        .is-down-badge { background: var(--down-bg); color: var(--down-color); border: 1px solid rgba(46, 160, 67, 0.35); }
+        .is-flat-badge { background: var(--flat-bg); color: var(--flat-color); border: 1px solid rgba(139, 157, 183, 0.2); }
+
+        .star-btn {
+            background: transparent;
+            border: none;
+            font-size: 17px;
+            cursor: pointer;
+            padding: 2px 4px;
+            line-height: 1;
+            transition: transform 0.15s ease;
+        }
+        .star-btn:hover { transform: scale(1.25); }
+        .star-active { color: #f1c40f; text-shadow: 0 0 6px rgba(241, 196, 15, 0.6); }
+        .star-inactive { color: #3b4b5e; }
+        .star-inactive:hover { color: #8b9db7; }
+
+        .hero-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .latest-price {
+            font-family: var(--font-mono);
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            line-height: 1;
+        }
+
+        .is-up { color: var(--up-color); }
+        .is-down { color: var(--down-color); }
+        .is-flat { color: var(--flat-color); }
+
+        .price-diff-text {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .range-bar-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .range-bar-labels {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .range-track {
+            height: 4px;
+            background: #1a2533;
+            border-radius: 2px;
+            position: relative;
+        }
+
+        .range-progress {
+            position: absolute;
+            height: 100%;
+            left: 0;
+            background: linear-gradient(90deg, #2ea043 0%, #d29922 50%, #f85149 100%);
+            border-radius: 2px;
+        }
+
+        .range-point {
+            position: absolute;
+            top: -3px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+            transform: translateX(-50%);
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px 10px;
+            background: #090e15;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .detail-label { color: var(--text-muted); }
+        .detail-value { font-family: var(--font-mono); font-weight: 600; color: var(--text-secondary); }
+
+        /* 专业图表弹出层 Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.88);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 16px;
+            overscroll-behavior: none;
+            overscroll-behavior-x: none;
+            overscroll-behavior-y: none;
+            touch-action: none;
+        }
+
+        .modal-content {
+            background: var(--bg-modal);
+            border: 1px solid var(--border-highlight);
+            border-radius: 12px;
+            width: 100%;
+            max-width: 1100px;
+            height: 88vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+            overflow: hidden;
+            position: relative;
+            overscroll-behavior: none;
+            overscroll-behavior-x: none;
+            overscroll-behavior-y: none;
+            touch-action: none;
+        }
+
+        .modal-loading-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 3px;
+            width: 0%;
+            background: linear-gradient(90deg, #388bfd, #58a6ff, #00f2fe);
+            box-shadow: 0 0 8px #58a6ff;
+            transition: width 0.2s ease, opacity 0.25s ease;
+            z-index: 100;
+            opacity: 0;
+        }
+        .modal-loading-bar.active { opacity: 1; width: 75%; }
+        .modal-loading-bar.done { opacity: 1; width: 100%; }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 18px;
+            background: #101824;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title-group {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .modal-title { font-size: 18px; font-weight: 700; }
+        .modal-price-hero { font-family: var(--font-mono); font-size: 22px; font-weight: 800; }
+
+        .modal-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 18px;
+            background: #090e15;
+            border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .modal-nav-left { display: flex; gap: 6px; }
+
+        .chart-tab-btn {
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #111a25;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+
+        .chart-tab-btn.active {
+            background: #1f6feb;
+            color: #fff;
+            border-color: #388bfd;
+        }
+
+        .modal-nav-status {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: #58a6ff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .modal-body {
+            flex: 1;
+            position: relative;
+            padding: 12px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow: hidden;
+        }
+
+        .chart-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            min-height: 280px;
+        }
+
+        #pro-chart-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: crosshair;
+            touch-action: none;
+            overscroll-behavior: contain;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 14px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+            min-height: 18px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        /* ===== 移动端竖版适配 (≤768px)：同一份 DOM，靠 CSS 重排成竖版 ===== */
+        @media (max-width: 768px) {
+            body {
+                padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+            }
+            .compact-header {
+                padding: 6px 10px;
+                min-height: 40px;
+            }
+            .compact-title {
+                font-size: 14px;
+            }
+            .compact-pill {
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            .compact-icon-btn {
+                padding: 3px 8px;
+                font-size: 13px;
+                min-height: 32px;
+            }
+            .drawer-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .drawer-row .select-control,
+            .drawer-row .threshold-group {
+                width: 100%;
+            }
+            .drawer-footer-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .filter-bar { padding: 4px; }
+            .dual-tab-group .tab-btn { font-size: 14px; padding: 8px; min-height: 42px; }
+            .cards-grid { grid-template-columns: 1fr; gap: 10px; }
+            .card { padding: 14px; }
+            .card:active { transform: scale(0.985); }
+            .modal-overlay {
+                padding: 0;
+                align-items: flex-end;
+            }
+            .modal-content {
+                width: 100%;
+                max-width: 100%;
+                height: 90dvh;
+                height: 90vh;
+                border-radius: 16px 16px 0 0;
+                border-bottom: none;
+                margin: 0;
+            }
+            .modal-header {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 14px;
+                gap: 8px;
+            }
+            .modal-title-group {
+                gap: 6px;
+                align-items: baseline;
+                flex-wrap: wrap;
+                flex: 1;
+                min-width: 0;
+            }
+            .modal-title { font-size: 15px; }
+            .modal-price-hero { font-size: 18px; }
+            .modal-nav-arrow-btn, .modal-close-btn {
+                min-height: 32px !important;
+                height: 32px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .modal-body { padding: 8px 12px; }
+            .chart-container { min-height: 250px; }
+            /* 触控友好：主控按钮放大可点区域至 >= 44px 规范，避免误触 */
+            .select-control, .tab-btn, .threshold-chip { min-height: 44px; }
+            header button, .header-controls button { min-height: 44px; }
+            .select-control { font-size: 14px; }
+            footer { font-size: 11px; padding: 8px; }
+        }
+
+        /* ===== 超小屏 (≤480px) 二次微调 ===== */
+        @media (max-width: 480px) {
+            .header-left .header-title h1 { font-size: 15px; }
+            .stat-badge { font-size: 12px; }
+            .card { padding: 12px; }
+            .modal-content { height: 92dvh; height: 92vh; }
+        }
+
+        /* ===== PWA 底部原生返回拦截 Toast 提示 ===== */
+        .pwa-guard-toast {
+            position: fixed;
+            bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+            left: 50%;
+            transform: translate(-50%, 16px);
+            background: rgba(14, 21, 32, 0.95);
+            color: #e2e8f0;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            padding: 10px 18px;
+            border-radius: 9999px;
+            border: 1px solid rgba(88, 166, 255, 0.35);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7), 0 0 14px rgba(88, 166, 255, 0.2);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 99999;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .pwa-guard-toast.visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 极简紧凑顶栏 (释放 70%+ 屏幕纵深) -->
+    <header class="compact-header">
+        <div class="compact-header-left">
+            <span class="compact-logo">⚡</span>
+            <h1 class="compact-title">期货雷达</h1>
+        </div>
+        <div class="compact-header-right">
+            <div id="compact-timer-pill" class="compact-pill" title="第1级全盘重扫倒计时与运行状态">
+                <span id="compact-timer-dot" class="pill-dot">🟢</span>
+                <span id="compact-timer-text">--s</span>
+            </div>
+            <button id="compact-refresh-btn" class="compact-icon-btn" onclick="manualRefresh()" title="立即重新扫描">
+                ⟳
+            </button>
+            <button id="settings-toggle-btn" class="compact-icon-btn" onclick="toggleSettingsDrawer()" title="展开/收起参数设置与统计">
+                ⚙️
+            </button>
+        </div>
+    </header>
+
+    <!-- 2px 极细发丝级倒计时进度条 (纯净极简，绝不晃眼) -->
+    <div class="hairline-progress-track">
+        <div id="countdown-progress-bar" class="hairline-progress-fill" style="width: 100%;"></div>
+    </div>
+
+    <!-- 可折叠设置抽屉 (默认折叠收拢，点击 ⚙️ 展开) -->
+    <div id="settings-drawer" class="settings-drawer" style="display: none;">
+        <div class="drawer-content">
+            <div class="drawer-section">
+                <div class="drawer-section-title">📊 筛选门槛</div>
+                <div class="drawer-row">
+                    <!-- 严密成交量门槛下拉框 (默认 ≥ 10000手) -->
+                    <select id="vol-threshold" class="select-control" onchange="onVolThresholdChange()">
+                        <option value="10000" selected>📊 门槛: ≥ 10000手 (主力)</option>
+                        <option value="20000">📊 门槛: ≥ 20000手 (高流动)</option>
+                        <option value="50000">📊 门槛: ≥ 50000手 (超高流动)</option>
+                        <option value="100000">📊 门槛: ≥ 100000手 (顶级流动)</option>
+                        <option value="5000">📊 门槛: ≥ 5000手 (标准)</option>
+                    </select>
+
+                    <!-- 全局置顶：涨跌幅门禁选择器 -->
+                    <div class="threshold-group" id="threshold-control">
+                        <span class="threshold-label">涨跌门禁:</span>
+                        <span class="threshold-chip active" onclick="setThreshold(1.0)">1.0%</span>
+                        <span class="threshold-chip" onclick="setThreshold(1.5)">1.5%</span>
+                        <span class="threshold-chip" onclick="setThreshold(2.0)">2.0%</span>
+                        <span class="threshold-chip" onclick="setThreshold(3.0)">3.0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">⏱️ 刷新频率</div>
+                <div class="drawer-row">
+                    <!-- 第1级全盘雷达重扫周期下拉框 -->
+                    <select id="scan-interval" class="select-control" onchange="onScanIntervalChange()">
+                        <option value="60">⏱️ 第1级重扫: 60秒</option>
+                        <option value="100" selected>⏱️ 第1级重扫: 100秒 (推荐)</option>
+                        <option value="120">⏱️ 第1级重扫: 120秒</option>
+                        <option value="0">⏸️ 仅手动重扫</option>
+                    </select>
+
+                    <!-- 第2级焦点池高频轻量轮询下拉框 -->
+                    <select id="focus-interval" class="select-control" onchange="onFocusIntervalChange()">
+                        <option value="2">⚡ 第2级轮询: 2秒</option>
+                        <option value="3">⚡ 第2级轮询: 3秒</option>
+                        <option value="5" selected>⚡ 第2级轮询: 5秒 (推荐)</option>
+                        <option value="10">⚡ 第2级轮询: 10秒</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">🎯 统计与状态</div>
+                <div class="drawer-stats">
+                    <div class="stat-badge">🎯 满足初筛: <span id="stat-total" style="color:var(--accent-color); font-weight:bold;">0</span> 个</div>
+                    <div class="stat-badge">多头强势: <span id="stat-up" class="stat-up">0</span></div>
+                    <div class="stat-badge">空头跳水: <span id="stat-down" class="stat-down">0</span></div>
+                    <span id="level2-pulse-badge" class="level2-badge">🟢 第2级待命中</span>
+                </div>
+                <div class="drawer-status-text" id="countdown-status-text">⚡ 正在执行第1级全市场扫描...</div>
+                <span class="filter-summary-text" id="filter-summary-text">过滤规则: 真实交割月份 (已排除当月/临近交割) 且 成交量 ≥ 10000手 且 |涨跌| ≥ 1.0%</span>
+                <div id="progress-nodes-layer" class="progress-nodes-layer" style="display:none;"></div>
+            </div>
+
+            <div class="drawer-footer-row">
+                <div id="data-source-banner" class="drawer-source-banner">⏳ 初始化中…</div>
+                <button id="manual-refresh-btn" onclick="manualRefresh()" class="drawer-refresh-btn" title="立即重新拉取一次全市场报价">
+                    ⟳ 立即全盘重扫
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 异动雷达双Tab分类栏 (1:1等宽，纯粹极简) -->
+    <div class="filter-bar">
+        <div class="dual-tab-group">
+            <button class="tab-btn active" id="tab-abs" onclick="switchMode('abs')">🔥 异动榜</button>
+            <button class="tab-btn" id="tab-custom" onclick="switchMode('custom')">⭐ 我的自选</button>
+        </div>
+    </div>
+
+    <!-- 行情卡片容器 -->
+    <main id="cards-container" class="cards-grid"></main>
+
+    <footer style="text-align: center; color: var(--text-muted); font-size: 11px; margin-top: auto; padding: 16px 10px; opacity: 0.65;">
+        上次刷新: <span id="last-update-time" style="font-family:var(--font-mono); color:var(--text-secondary);">--:--:--</span>
+    </footer>
+
+    <!-- 专业图表弹出层 Modal -->
+    <div id="chart-modal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div id="modal-loading-bar" class="modal-loading-bar"></div>
+
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <span id="modal-name" class="modal-title">--</span>
+                    <span id="modal-code" style="font-family: var(--font-mono); color: var(--text-muted); font-size: 13px;">--</span>
+                    <span id="modal-tag-session"></span>
+                    <span id="modal-price" class="modal-price-hero">--</span>
+                    <span id="modal-badge" class="change-badge is-flat-badge">0.00%</span>
+                </div>
+
+                <div class="modal-header-actions" style="display: flex; align-items: center; gap: 8px;">
+                    <!-- 合约序位快速切换 -->
+                    <div style="display: flex; align-items: center; gap: 3px; background: #141e2b; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 12px; font-family: var(--font-mono);">
+                        <button onclick="navContract(-1)" class="modal-nav-arrow-btn" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:13px; padding:2px 6px;" title="上一合约 (快捷键: ↑ / PageUp)">◀</button>
+                        <span id="modal-seq-badge" style="color:var(--accent-color); font-weight:bold; min-width:44px; text-align:center;">-- / --</span>
+                        <button onclick="navContract(1)" class="modal-nav-arrow-btn" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:13px; padding:2px 6px;" title="下一合约 (快捷键: ↓ / PageDown)">▶</button>
+                    </div>
+
+                    <button onclick="closeChartModal()" class="modal-close-btn" style="font-size: 16px; padding: 4px 10px; background:#141e2b; border:1px solid var(--border-color); color:var(--text-primary); border-radius:6px; cursor:pointer;" title="关闭 (Esc / 手机左滑返回)">✕</button>
+                </div>
+            </div>
+
+            <div class="modal-nav">
+                <div class="modal-nav-left">
+                    <button class="chart-tab-btn" id="chart-tab-trend" onclick="switchChartType('trend')">📈 当日分时图</button>
+                    <button class="chart-tab-btn" id="chart-tab-k5" onclick="switchChartType('5')">🕯️ 5分钟K</button>
+                    <button class="chart-tab-btn active" id="chart-tab-k15" onclick="switchChartType('15')">🕯️ 15分钟K</button>
+                    <button class="chart-tab-btn" id="chart-tab-k60" onclick="switchChartType('60')">🕯️ 60分钟K</button>
+                    <button class="chart-tab-btn" id="chart-tab-kday" onclick="switchChartType('101')">🕯️ 日K线</button>
+                </div>
+                <div id="modal-status-feedback" class="modal-nav-status">
+                    <span id="chart-status-text">⚡ 准备就绪</span>
+                </div>
+            </div>
+
+            <div class="modal-body">
+                <div class="chart-legend" id="chart-legend"></div>
+                <div class="chart-container" id="chart-wrapper">
+                    <canvas id="pro-chart-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 品种与市场映射 (100% 真实物理合约) ====================
+        // ⚠️ 东财 secid 命名规则（2026-10 实测，极易踩坑，勿凭直觉改）：
+        //   113 上期所    代码小写 4 位   113.rb2612
+        //   114 大商所    代码小写 4 位   114.i2701
+        //   142 上期能源  代码小写 4 位   142.sc2611   ← 不是 113
+        //   115 郑商所    代码大写 3 位   115.MA701    ← YMM 而非 YYMM，小写无效
+        //   220 中金所    代码大写 4 位   220.IF2703   ← 不是 8
+        //   225 广期所    代码小写 4 位   225.si2611
+        // 写成 113.2612（丢字母）、115.MA2611（4位）、8.IF2703 都会 data:null 或断连，
+        // 曾因此误判为「休市无数据」。
+        const VARIETY_MARKET = {
+            'M': 114, 'JM': 114, 'J': 114, 'I': 114, 'Y': 114, 'P': 114, 'C': 114, 'CS': 114,
+            'A': 114, 'B': 114, 'L': 114, 'V': 114, 'PP': 114, 'EG': 114, 'EB': 114, 'PG': 114,
+            'LH': 114, 'JD': 114, 'RR': 114, 'FB': 114, 'BB': 114,
+            'RB': 113, 'HC': 113, 'AG': 113, 'AU': 113, 'CU': 113, 'AL': 113, 'ZN': 113, 'PB': 113,
+            'NI': 113, 'SN': 113, 'SS': 113, 'FU': 113, 'BU': 113, 'RU': 113, 'SP': 113, 'AO': 113,
+            'BR': 113, 'WR': 113,
+            'SC': 142, 'LU': 142, 'NR': 142, 'BC': 142, 'EC': 142,
+            'OI': 115, 'TA': 115, 'MA': 115, 'FG': 115, 'SA': 115, 'RM': 115, 'RS': 115, 'SR': 115,
+            'CF': 115, 'CY': 115, 'AP': 115, 'CJ': 115, 'UR': 115, 'PF': 115, 'PK': 115, 'PX': 115,
+            'SH': 115, 'ZC': 115, 'SF': 115, 'SM': 115,
+            'IF': 220, 'IC': 220, 'IM': 220, 'IH': 220, 'TF': 220, 'T': 220, 'TS': 220, 'TL': 220,
+            'SI': 225, 'LC': 225, 'PS': 225
+        };
+
+        // 按交易所规则拼出东财合约代码（不含 market 前缀）
+        function makeContractCode(symbol, year, month) {
+            const market = VARIETY_MARKET[symbol] || 114;
+            const mm = (month < 10 ? '0' + month : '' + month);
+            if (market === 115) return symbol + (year % 10) + mm;      // 郑商所 3 位 YMM，大写
+            if (market === 220) return symbol.toUpperCase() + String(year % 100).padStart(2, '0') + mm;
+            return symbol.toLowerCase() + String(year % 100).padStart(2, '0') + mm;
+        }
+
+        // 把 "rb2612" / "MA701" / "113.rb2612" 统一解析成 secid
+        function secidOf(rawCode) {
+            if (!rawCode) return null;
+            const code = ('' + rawCode).trim();
+            if (code.includes('.')) return code;
+            const m = code.toUpperCase().match(/^([A-Z]+)(\d{3,4})$/);
+            if (!m) return null;
+            const symbol = m[1], digits = m[2];
+            const market = VARIETY_MARKET[symbol] || 114;
+            let eastCode;
+            if (market === 115 && digits.length === 4) {
+                // 郑商所：东财用 3 位，2026-10 → 610（去掉百位年）
+                eastCode = symbol + digits.slice(1);
+            } else if (market === 220) {
+                eastCode = symbol.toUpperCase() + digits;
+            } else {
+                eastCode = symbol.toLowerCase() + digits;
+            }
+            return market + '.' + eastCode;
+        }
+
+        // 全市场合约池：不做任何"列表接口"依赖，靠品种表 + 月份枚举自建
+        // 排列刻意做成「按月份交错、每月跨交易所」：某一批 150 个请求失败时，
+        // 丢的是"各品种的某两个月份"，而不是"整个郑商所"，列表不会整片消失。
+        const POOL_MONTHS_AHEAD = 8;
+        const SINA_POOL_MONTHS = 2;   // 新浪兜底只扫未来 2 个月，控制逐合约请求量（约 100+ 合约）
+        let cachedPool = null;
+        let cachedPoolKey = '';
+        function buildContractPool(months) {
+            months = months || POOL_MONTHS_AHEAD;
+            const now = new Date();
+            const key = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + months;
+            if (cachedPool && cachedPoolKey === key) return cachedPool;
+            const out = [];
+            const symbols = Object.keys(VARIETY_MARKET);
+            for (let i = 1; i <= months; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+                for (const symbol of symbols) {
+                    const market = VARIETY_MARKET[symbol];
+                    const code = makeContractCode(symbol, d.getFullYear(), d.getMonth() + 1);
+                    out.push({ secid: market + '.' + code, code: code, market: market, symbol: symbol });
+                }
+            }
+            cachedPool = out;
+            cachedPoolKey = key;
+            return out;
+        }
+
+        // 解析合约的具体交割年份与月份
+        function parseContractYearMonth(name, code) {
+            const str = `${code || ''} ${name || ''}`.toUpperCase();
+            // 1. 优先匹配 4 位年份月份 (如 2610 -> 2026年10月, 2505 -> 2025年5月, 2701 -> 2027年1月)
+            const m4 = str.match(/(\d{2})(\d{2})/);
+            if (m4) {
+                const y = 2000 + parseInt(m4[1]);
+                const m = parseInt(m4[2]);
+                if (m >= 1 && m <= 12) return { year: y, month: m };
+            }
+            // 2. 匹配郑商所等 3 位年份月份 (如 610 -> 2026年10月, 603 -> 2026年3月, 705 -> 2027年5月)
+            const m3 = str.match(/(\d)(\d{2})/);
+            if (m3) {
+                const y = 2020 + parseInt(m3[1]);
+                const m = parseInt(m3[2]);
+                if (m >= 1 && m <= 12) return { year: y, month: m };
+            }
+            return null;
+        }
+
+        // 判断是否为近月/已过期的无参与价值合约
+        // 规则：
+        // (a) 当月合约及历史已过期月份 100% 排除 (如当前为 10 月，排除所有 10 月及之前合约)
+        // (b) 下个月合约：若当前已达月中/下旬 (每月 16 日起)，下月合约因临近交割亦无参与价值，予以排除
+        function isNearOrExpiredContract(name, code) {
+            const ym = parseContractYearMonth(name, code);
+            if (!ym) return true; // 无法识别交割年月的一律排除
+
+            const now = new Date();
+            const curYear = now.getFullYear();
+            const curMonth = now.getMonth() + 1; // 1 - 12
+            const curDay = now.getDate();        // 1 - 31
+
+            const contractScore = ym.year * 12 + ym.month;
+            const curScore = curYear * 12 + curMonth;
+
+            // (a) 当月及历史过期月份：坚决过滤
+            if (contractScore <= curScore) return true;
+
+            // (b) 下个月合约：每月 16 日起排除 (临近交割仅剩约 15 天)
+            if (contractScore === curScore + 1 && curDay >= 16) return true;
+
+            return false;
+        }
+
+        // 判断是否为真实交割合约 (必须包含具体年月数字，且绝对不含主连/指数/近月交割月)
+        function isPhysicalContract(name, code) {
+            if (!name || !code) return false;
+            
+            // 1. 绝对剔除合成虚拟标的
+            const syntheticKeywords = ['主连', '次主连', '主力', '连续', '加权', '指数', '当月', '下月', '下季', '隔季', '月均'];
+            if (syntheticKeywords.some(kw => name.includes(kw))) return false;
+            if (code.endsWith('m') || code.endsWith('M')) return false;
+
+            // 2. 必须包含 3 位或 4 位数字交割月份 (如 2610, 2701, 610, 505)
+            const hasDigits = /\d{3,4}/.test(code) || /\d{3,4}/.test(name);
+            if (!hasDigits) return false;
+
+            // 3. 近月与过期合约过滤：散户无交割价值，当月及月中后的次月合约 100% 排除
+            if (isNearOrExpiredContract(name, code)) return false;
+
+            return true;
+        }
+
+        function resolveSecId(input) {
+            if (!input) return null;
+            const secid = secidOf(input);
+            if (!secid) return null;
+            const code = secid.split('.')[1];
+            return { rawInput: ('' + input).trim().toUpperCase(), secid: secid, symbol: code.toUpperCase() };
+        }
+
+        // ==================== 品种聚合与领头月份提取 ====================
+        function parseVarietySymbol(code) {
+            if (!code) return '';
+            const m = String(code).trim().match(/^([A-Za-z]+)/);
+            return m ? m[1].toLowerCase() : '';
+        }
+
+        function parseMonthCode(code) {
+            if (!code) return '';
+            const m = String(code).trim().match(/^[A-Za-z]+(\d+)/);
+            return m ? m[1] : '';
+        }
+
+        // 按品种对异动合约进行聚合收拢 (同一品种仅出一张代表卡片，附带活跃月份列表)
+        function groupQuotesByVariety(quotes) {
+            if (!Array.isArray(quotes) || quotes.length === 0) return [];
+
+            const map = new Map();
+
+            quotes.forEach(q => {
+                const sym = parseVarietySymbol(q.code);
+                if (!sym) return;
+
+                if (!map.has(sym)) {
+                    // 提取基础品种名 (例如 "碳酸锂2705" -> "碳酸锂", "螺纹2612" -> "螺纹")
+                    const baseName = (q.name || '').replace(/\d+$/, '').trim() || sym.toUpperCase();
+                    map.set(sym, {
+                        variety: sym,
+                        name: baseName,
+                        market: q.market,
+                        months: []
+                    });
+                }
+
+                const group = map.get(sym);
+                const monthCode = parseMonthCode(q.code);
+                group.months.push({
+                    ...q,
+                    monthCode: monthCode
+                });
+            });
+
+            const groups = [];
+            map.forEach(group => {
+                if (!group.months.length) return;
+
+                // 寻找 |涨跌幅| 最大的作为领头合约 (Lead)
+                let lead = group.months[0];
+                group.months.forEach(m => {
+                    if (Math.abs(m.changePercent) > Math.abs(lead.changePercent)) {
+                        lead = m;
+                    }
+                });
+
+                // 按成交量倒序排序（成交量最大即主力合约排在首位，平局时按代码排序），并标记 isLead
+                group.months.sort((a, b) => ((b.vol || 0) - (a.vol || 0)) || a.code.localeCompare(b.code));
+                group.months.forEach((m, idx) => {
+                    m.isLead = (m.secid === lead.secid);
+                    m.isDominant = (idx === 0);
+                });
+
+                group.leadQuote = lead;
+                group.activeSecid = lead.secid;
+                groups.push(group);
+            });
+
+            // 各品种按领头合约的 |涨跌幅| 倒序排列
+            groups.sort((a, b) => Math.abs(b.leadQuote.changePercent) - Math.abs(a.leadQuote.changePercent));
+            return groups;
+        }
+
+        // ==================== 应用状态 ====================
+        const DEFAULT_WATCHLIST = ['rb2612', 'fu2612', 'i2701', 'ag2612', 'v2701', 'pp2701'];
+        const STORAGE_KEY = 'mystx_futures_physical_v3';
+
+        // ==================== 自选与运行态行情管理 ====================
+        // 行情数据仅在 JS 内存运行态管理，绝不存入 localStorage，每次打开均 100% 实时从市场并发拉取
+        let cloudWatchAvailable = false; // 是否已与 Cloudflare KV 全局云端自选打通
+        let lastGoodQuotes = [];
+        let lastGoodTs = 0;
+        let dataMode = 'init'; // 'init' | 'live' | 'cache' | 'empty'
+        let quoteSource = 'ulist'; // 'ulist' | 'clist' | 'sina'（数据源标记，用于横幅提示）
+
+        // ==================== 交易时段 & 刷新节奏（真话版） ====================
+        // 设计原则（2026-10 重构）：
+        //   1. 全部数据来自 ulist 批量接口，它在休市时仍返回「最近交易时段收盘」，不需要云端快照搬运。
+        //   2. 休市期间**一个请求都不发**，只挂一个一次性定时器到「下一开盘前 10 分钟」（08:50 / 13:20 / 20:50）。
+        //   3. 不再有 60s/300s 的假刷新——没有新数据时刷新只是白白空转。
+        const DAY_SESSIONS = [[9 * 60, 11 * 60 + 30], [13 * 60 + 30, 15 * 60]];
+        const NIGHT_SESSIONS = [[21 * 60, 24 * 60], [0, 2 * 60 + 30]];
+        const OPEN_TIMES = [9 * 60, 13 * 60 + 30, 21 * 60];   // 日盘开盘 / 午盘开盘 / 夜盘开盘
+        const PRE_OPEN_LEAD_MIN = 10;                          // 开盘前提前量 → 08:50 / 13:20 / 20:50
+
+        function minutesOfDay(d) { return d.getHours() * 60 + d.getMinutes(); }
+
+        function isTradingNow(date) {
+            const t = minutesOfDay(date || new Date());
+            return DAY_SESSIONS.some(r => t >= r[0] && t <= r[1])
+                || NIGHT_SESSIONS.some(r => t >= r[0] && t <= r[1]);
+        }
+
+        // 兼容旧调用点：休市 = 不交易
+        function isMarketOffHours() { return !isTradingNow(); }
+
+        // 是否处于「开盘前 10 分钟」窗口（08:50-09:00 / 13:20-13:30 / 20:50-21:00）
+        // 窗口内虽有收盘快照，但要拉一次最新盘前数据，不能拿旧收盘快照糊弄
+        function inPreOpenWindow() {
+            const t = minutesOfDay(new Date());
+            return OPEN_TIMES.some(o => t >= o - PRE_OPEN_LEAD_MIN && t < o);
+        }
+
+        function marketPhaseLabel() {
+            const t = minutesOfDay(new Date());
+            if (DAY_SESSIONS.some(r => t >= r[0] && t <= r[1])) return '盘中';
+            if (NIGHT_SESSIONS.some(r => t >= r[0] && t <= r[1])) return '夜盘';
+            return '休市';
+        }
+
+        // 下一个该刷新的时刻：交易中 → null（走常规轮询）；休市 → 下一个开盘前 10 分钟
+        function nextRefreshAt(from) {
+            const base = from ? new Date(from.getTime()) : new Date();
+            if (isTradingNow(base)) return null;
+            for (let dayOffset = 0; dayOffset <= 3; dayOffset++) {
+                for (const openMin of OPEN_TIMES) {
+                    const target = new Date(base.getTime());
+                    target.setDate(target.getDate() + dayOffset);
+                    target.setHours(0, 0, 0, 0);
+                    target.setMinutes(openMin - PRE_OPEN_LEAD_MIN);
+                    if (target.getTime() > base.getTime() + 30000) return target;
+                }
+            }
+            return null;
+        }
+
+        function fmtHM(d) {
+            const p = n => (n < 10 ? '0' + n : '' + n);
+            return p(d.getHours()) + ':' + p(d.getMinutes());
+        }
+
+        // 休市时给人看的说明：下次几时刷新 + 还差多久
+        function idleHintText() {
+            const t = nextRefreshAt();
+            if (!t) return '';
+            const now = new Date();
+            let mins = Math.round((t.getTime() - now.getTime()) / 60000);
+            const sameDay = t.getDate() === now.getDate() && t.getMonth() === now.getMonth();
+            const dayTag = sameDay ? '' : (t.getDate() === now.getDate() + 1 ? '明日 ' : (t.getMonth() + 1) + '/' + t.getDate() + ' ');
+            let eta = '';
+            if (mins >= 60) eta = Math.floor(mins / 60) + ' 小时 ' + (mins % 60) + ' 分';
+            else eta = mins + ' 分';
+            return dayTag + fmtHM(t) + ' 自动刷新（还有 ' + eta + '）';
+        }
+
+        // ==================== 交易时段感知与时效性过滤 (过滤日盘死数据) ====================
+        // 格式化成交时间
+        function formatTradeTime(ts) {
+            if (!ts) return '--';
+            const d = new Date(ts);
+            const p = n => (n < 10 ? '0' + n : '' + n);
+            return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+        }
+
+        // 交易所官方统一夜盘品种清单 (各大期货交易所官方明确开设夜盘交易的品种，共 50 个)
+        // 凡不在该集合中的品种（如红枣 CJ、苹果 AP、花生 PK、尿素 UR、生猪 LH、鸡蛋 JD、碳酸锂 LC、工业硅 SI、欧线 EC 等 25 个品种），交易所一律无夜盘！
+        const NIGHT_TRADING_SYMBOLS = new Set([
+            'm', 'jm', 'j', 'i', 'y', 'p', 'c', 'cs', 'a', 'b', 'l', 'v', 'pp', 'eg', 'eb', 'pg',
+            'rb', 'hc', 'ag', 'au', 'cu', 'al', 'zn', 'pb', 'ni', 'sn', 'ss', 'fu', 'bu', 'ru', 'sp', 'ao', 'br',
+            'sc', 'lu', 'nr', 'bc',
+            'oi', 'ta', 'ma', 'fg', 'sa', 'rm', 'sr', 'cf', 'cy', 'pf', 'px', 'sh', 'zc'
+        ]);
+
+        function hasNightTrading(code) {
+            const sym = parseVarietySymbol(code);
+            return NIGHT_TRADING_SYMBOLS.has(sym);
+        }
+
+        // 当前是否处于夜盘交易窗口或夜盘收盘后到次日早盘前窗口 (21:00 至 次日 08:50，以及周末全天)
+        // 在此窗口内，市场最新发生的交易是夜盘，无夜盘品种处于日盘定格状态
+        function isNightSessionWindow(date) {
+            const d = date || new Date();
+            const day = d.getDay(); // 0: 日, 6: 六
+            const t = minutesOfDay(d);
+            if (day === 6 || day === 0) return true; // 周末市场最新发生的是周五夜盘
+            if (day === 1 && t < 8 * 60 + 50) return true; // 周一早盘前
+            return (t >= 21 * 60 || t < 8 * 60 + 50);
+        }
+
+        // 获取当前所属夜盘的起始时间戳 (例如当晚 21:00，跨日凌晨/清晨则取前一自然日 21:00，周一清晨取周五 21:00)
+        function getNightSessionStartTime(refDate) {
+            const d = new Date(refDate || Date.now());
+            const day = d.getDay(); // 0: 日, 1: 一, ..., 6: 六
+            const hour = d.getHours();
+            const start = new Date(d);
+
+            if (day === 1 && hour < 12) {
+                // 周一早盘前：上一个夜盘是上周五 21:00
+                start.setDate(start.getDate() - 3);
+            } else if (day === 0) {
+                // 周日：上一个夜盘是周五 21:00
+                start.setDate(start.getDate() - 2);
+            } else if (hour < 12) {
+                // 周二至周六凌晨/清晨：始于前一日 21:00
+                start.setDate(start.getDate() - 1);
+            }
+            start.setHours(21, 0, 0, 0);
+            return start.getTime();
+        }
+
+        // 获取交易时段详细状态
+        function getMarketSessionStatus(date) {
+            const d = date || new Date();
+            const t = minutesOfDay(d);
+            const isNight = NIGHT_SESSIONS.some(r => t >= r[0] && t <= r[1]);
+            const isDay = DAY_SESSIONS.some(r => t >= r[0] && t <= r[1]);
+            return {
+                isTrading: isNight || isDay,
+                isNight: isNight,
+                isDay: isDay,
+                phase: isNight ? '夜盘' : (isDay ? '盘中' : '休市')
+            };
+        }
+
+        // 判断合约在当前交易时段是否为真实活跃撮合（解决红枣CJ、苹果AP、碳酸锂LC等无夜盘品种日盘停滞数据污染夜盘异动榜的问题）
+        function isQuoteActiveInCurrentSession(quote, refDate) {
+            if (!quote) return false;
+            const now = refDate || new Date();
+            if (isNightSessionWindow(now)) {
+                // 1. 交易所硬规则：品种必须具备夜盘资格 (红枣 CJ、苹果 AP、生猪 LH、鸡蛋 JD、碳酸锂 LC、工业硅 SI、欧线 EC 等 100% 隔离)
+                if (!hasNightTrading(quote.code || quote.secid)) return false;
+
+                // 2. 有夜盘品种：检查实际成交时间戳是否处于今晚夜盘中 (杜绝未开盘夜盘品种的日盘旧数据)
+                // 注意：东财服务器会在 21:00:00 广播一次盘前状态戳，因此真实夜盘成交时间必须严格大于 21:00:00
+                if (!quote.tradeTime) return true;
+                const nightStart = getNightSessionStartTime(now);
+                return quote.tradeTime > nightStart;
+            }
+            // 日盘交易时段 (09:00 - 15:00) 及 日盘收盘后 (15:00 - 21:00)：全市场均已参与日盘，均为有效数据
+            return true;
+        }
+
+        // 说明：原「云端收盘快照」机制已整体移除。
+        // 原因是快照要跨设备搬运，多端谁写谁读、以谁为准都很难自洽；
+        // 而 ulist 批量接口本身在休市时就能返回最近交易时段收盘，直接读即可，无需搬运。
+
+        // ==================== 全局自选云同步 (Cloudflare KV 全局共用) ====================
+        // 从 Cloudflare KV 读取全局自选（手机电脑共用同一份自选，零登录零口令）
+        async function fetchGlobalWatchlist() {
+            try {
+                const resp = await fetch('/api/watchlist', { cache: 'no-store' });
+                if (!resp.ok) throw new Error('status: ' + resp.status);
+                const json = await resp.json();
+                if (json && json.ok) {
+                    if (Array.isArray(json.list) && json.list.length > 0) {
+                        // 云端已有自选：以云端最新列表为准，同步写入本地缓存
+                        customWatchlist = json.list;
+                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(customWatchlist)); } catch (e) {}
+                        cloudWatchAvailable = true;
+                        if (currentMode === 'custom' && isStep1Ready) {
+                            filterAndRenderFocusPool();
+                        }
+                    } else if (customWatchlist.length > 0) {
+                        // 云端尚为空：自动将本地当前的自选同步至云端，完成首期播种
+                        saveWatchlistToCloud();
+                        cloudWatchAvailable = true;
+                    }
+                }
+            } catch (e) {
+                console.warn('[watchlist] 全局自选同步暂不可用:', e);
+                cloudWatchAvailable = false;
+            }
+            updateDataSourceBanner();
+        }
+
+        // 推送当前自选列表至 Cloudflare KV
+        async function saveWatchlistToCloud() {
+            try {
+                const resp = await fetch('/api/watchlist', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ list: customWatchlist })
+                });
+                const json = await resp.json();
+                cloudWatchAvailable = !!(json && json.ok);
+            } catch (e) {
+                console.warn('[watchlist] 推送云端失败:', e);
+                cloudWatchAvailable = false;
+            }
+            updateDataSourceBanner();
+        }
+
+        function updateDataSourceBanner() {
+            const el = document.getElementById('data-source-banner');
+            if (!el) return;
+            const phase = marketPhaseLabel();
+            let html = '';
+            if (dataMode === 'live') {
+                if (phase === '休市') {
+                    const t = lastGoodTs ? new Date(lastGoodTs).toTimeString().split(' ')[0] : '--';
+                    html += '🌙 休市 · 最近交易时段收盘 · 抓取于 ' + t + ' · ' + allPhysicalQuotes.length + ' 个合约';
+                } else {
+                    html += '🟢 ' + phase + '实时 · ' + allPhysicalQuotes.length + ' 个合约 · 更新于 '
+                        + (lastGoodTs ? new Date(lastGoodTs).toTimeString().split(' ')[0] : '--');
+                }
+                html += ' · 源:' + (quoteSource === 'snapshot' ? '收盘快照(定时)' : (quoteSource === 'sina' ? '新浪日线(精选' + SINA_POOL_MONTHS + '月)' : (quoteSource === 'ulist' ? '东财(批量)' : '东财')));
+            } else if (dataMode === 'cache') {
+                const t = lastGoodTs ? new Date(lastGoodTs).toTimeString().split(' ')[0] : '未知';
+                html += '🟡 本次未取到数据，显示本机缓存（截至 ' + t + '）';
+            } else if (dataMode === 'empty') {
+                html += '⚠️ 未取到任何行情（批次 ' + lastBatchStat.okBatches + '/' + lastBatchStat.batches
+                    + ' 成功' + (lastBatchStat.lastErr ? ' · ' + lastBatchStat.lastErr : '') + '）· 点「手动刷新」重试';
+            } else {
+                html += '⏳ 初始化中…';
+            }
+            if (!isTradingNow()) {
+                const hint = idleHintText();
+                if (hint) html += ' · ' + hint;
+            }
+            if (cloudWatchAvailable) {
+                html += ' · ☁️ 自选: 全局云端同步';
+            } else {
+                html += ' · 💾 自选: 本地存储';
+            }
+            el.innerHTML = html;
+        }
+
+        let customWatchlist = [];
+        let currentMode = 'abs';
+        let currentThreshold = 1.0;
+        let currentVolThreshold = 10000; // 默认成交量硬门槛：10000手 (主力)
+        let scanIntervalSec = 100;       // 第1级全盘重扫周期 (100秒)
+        let focusPollSec = 5;            // 第2级焦点高频轮询 (5秒)
+        let countdownRemaining = 100;
+
+        let isStep1Ready = false;        // 第1步完成标志
+        let isScanning = false;          // 第1步扫描锁
+
+        let allPhysicalQuotes = [];      // 第1步全市场筛选池
+        let focusQuotes = [];            // 第2步高频轮询焦点池
+
+        let focusPollTimer = null;       // 第2级高频轻量定时器
+        let countdownTimer = null;       // 1秒倒计时时钟
+
+        // 弹窗状态 (无发霉缓存，即点即查)
+        // 弹窗状态 (无发霉缓存，即点即查)
+        let activeModalSecId = null;
+        let activeModalQuote = null;
+        let currentChartType = '15';
+        let chartReqVersion = 0;         // 请求版本防竞争锁
+        let currentWheelAction = localStorage.getItem('mystx_wheel_action') || 'zoom';
+        let cachedFullKlines = [];       // 缓存当前合约拉取到的完整历史 K 线
+        let chartViewStart = 0;           // 平移偏移：从最新一根往前回溯的 K 柱数（触控拖动 / 单指滑动用）
+        let currentVisibleCount = 150;   // 当前视口缩放展现的 K 柱数量
+        let lastWheelSwitchTime = 0;     // 滚轮切合约防抖时间戳
+
+        // 初始化
+        function init() {
+            initPwaHistoryGuard();
+
+            // 初始化滚轮偏好选择器
+            const wheelSel = document.getElementById('wheel-action-select');
+            if (wheelSel) wheelSel.value = currentWheelAction;
+
+            // 监听弹窗滚轮事件 (严格拦截，100% 阻止底层页面滚动)
+            const modalEl = document.getElementById('chart-modal');
+            if (modalEl) {
+                modalEl.addEventListener('wheel', handleModalWheel, { passive: false });
+            }
+
+            // 全局键盘快捷键 (Esc关闭, ↑/↓/PgUp/PgDn切合约, +-缩放)
+            window.addEventListener('keydown', handleModalKeyDown);
+
+            window.addEventListener('resize', () => {
+                renderProgressNodes();
+                if (activeModalSecId) {
+                    if (currentChartType === 'trend') renderProChart();
+                    else redrawKlineCanvasOnly();
+                }
+            });
+
+            // 智能休眠机制
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    stopAllTimers();
+                } else {
+                    // 回到前台拉一次云端最新自选，并重新拉行情
+                    fetchGlobalWatchlist();
+                    scanFullMarket(false);
+                }
+            });
+
+            // 严格纯净：主动清除可能遗留的历史行情本地存储键（仅自选保留在 localStorage）
+            try {
+                localStorage.removeItem('mystx_futures_cache_v2');
+                localStorage.removeItem('mystx_futures_cache_ts');
+            } catch (e) {}
+
+            initWatchlist();              // 先读本地秒开，并异步连通全局 KV 同步
+            initTabSwipeGesture();        // 启用手机端双 Tab 左右滑动手势切换
+            renderProgressNodes();
+            scanFullMarket(false);        // 100% 直连市场实时并发拉取
+        }
+
+        // 初始化自选：本地瞬时加载 + 异步连通全局 KV
+        function initWatchlist() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length) customWatchlist = parsed;
+                    else customWatchlist = [...DEFAULT_WATCHLIST];
+                } catch(e) { customWatchlist = [...DEFAULT_WATCHLIST]; }
+            } else {
+                customWatchlist = [...DEFAULT_WATCHLIST];
+            }
+            updateDataSourceBanner();
+            fetchGlobalWatchlist();
+        }
+
+        function saveWatchlist() {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(customWatchlist)); } catch (e) {}
+            saveWatchlistToCloud();
+        }
+
+        // ==================== 设置抽屉切换与外部点击收起 ====================
+        function toggleSettingsDrawer() {
+            const drawer = document.getElementById('settings-drawer');
+            const btn = document.getElementById('settings-toggle-btn');
+            if (!drawer) return;
+            const isOpen = drawer.style.display !== 'none';
+            if (isOpen) {
+                drawer.style.display = 'none';
+                if (btn) btn.classList.remove('active');
+            } else {
+                drawer.style.display = 'block';
+                if (btn) btn.classList.add('active');
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            const drawer = document.getElementById('settings-drawer');
+            const btn = document.getElementById('settings-toggle-btn');
+            if (!drawer || drawer.style.display === 'none') return;
+            if (!drawer.contains(e.target) && !btn.contains(e.target)) {
+                drawer.style.display = 'none';
+                if (btn) btn.classList.remove('active');
+            }
+        });
+
+        function onVolThresholdChange() {
+            currentVolThreshold = parseInt(document.getElementById('vol-threshold').value);
+            updateFilterSummaryText();
+            // 切换成交量门槛：立即发起全市场第1级重扫并重置倒计时
+            scanFullMarket(false);
+        }
+
+        function onScanIntervalChange() {
+            scanIntervalSec = parseInt(document.getElementById('scan-interval').value);
+            countdownRemaining = scanIntervalSec;
+            renderProgressNodes();
+            updateCountdownUI();
+        }
+
+        function onFocusIntervalChange() {
+            focusPollSec = parseInt(document.getElementById('focus-interval').value);
+            renderProgressNodes();
+            startAllTimers();
+        }
+
+        function updateFilterSummaryText() {
+            const summaryEl = document.getElementById('filter-summary-text');
+            if (summaryEl) {
+                const isNight = isNightSessionWindow();
+                const sessionHint = isNight ? ' · 🌙 夜盘时效: 仅统计今晚 21:00 后有成交的活跃品种 (已自动剔除日盘定格)' : '';
+                summaryEl.textContent = `过滤规则: 真实交割月份 (已排除当月/临近交割) 且 成交量 ≥ ${currentVolThreshold}手 且 |涨跌| ≥ ${currentThreshold.toFixed(1)}%${sessionHint}`;
+            }
+        }
+
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            const activeTab = document.getElementById(`tab-${mode.replace('_', '-')}`);
+            if (activeTab) activeTab.classList.add('active');
+
+            filterAndRenderFocusPool();
+        }
+
+        // ==================== 手机端双 Tab 左右滑动手势切换 ====================
+        function initTabSwipeGesture() {
+            let startX = 0;
+            let startY = 0;
+            let isSwiping = false;
+
+            document.addEventListener('touchstart', (e) => {
+                if (activeModalSecId) return; // 二级图表面板打开时严格禁用，确保 K 线手势独立
+                const modal = document.getElementById('chart-modal');
+                if (modal && modal.style.display === 'flex') return;
+                const drawer = document.getElementById('settings-drawer');
+                if (drawer && drawer.style.display !== 'none') return; // 设置抽屉展开时禁用
+
+                // 避开屏幕左右两端 24px 边缘区域，杜绝与系统级侧滑返回手势冲突
+                if (!e.touches || e.touches.length !== 1) return;
+                const touchX = e.touches[0].clientX;
+                if (touchX < 24 || touchX > window.innerWidth - 24) return;
+
+                startX = touchX;
+                startY = e.touches[0].clientY;
+                isSwiping = true;
+            }, { passive: true });
+
+            document.addEventListener('touchend', (e) => {
+                if (!isSwiping || activeModalSecId) return;
+                isSwiping = false;
+                if (!e.changedTouches || e.changedTouches.length === 0) return;
+
+                const deltaX = e.changedTouches[0].clientX - startX;
+                const deltaY = e.changedTouches[0].clientY - startY;
+
+                // 判定：水平滑动距离 > 50px，且水平偏角明显大于垂直移动 (1.5倍)，避免干扰常规上下翻看行情
+                if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+                    if (deltaX < 0) {
+                        // 手指向左滑：切换到下一个 Tab (异动榜 -> 我的自选)
+                        switchMode(currentMode === 'abs' ? 'custom' : 'abs');
+                    } else {
+                        // 手指向右滑：切换到上一个 Tab (我的自选 -> 异动榜)
+                        switchMode(currentMode === 'custom' ? 'abs' : 'custom');
+                    }
+                }
+            }, { passive: true });
+        }
+
+        function setThreshold(val) {
+            currentThreshold = val;
+            document.querySelectorAll('.threshold-chip').forEach(c => {
+                c.classList.toggle('active', parseFloat(c.textContent) === val);
+            });
+            const tabAbs = document.getElementById('tab-abs');
+            if (tabAbs) tabAbs.textContent = '🔥 异动榜';
+            updateFilterSummaryText();
+            // 核心修复：切换涨跌幅门槛时，与成交量门槛完全一致，立即发起一次全市场第1级重扫并重置倒计时
+            scanFullMarket(false);
+        }
+
+        // ==================== 绘制打点节点与吃豆抹掉机制 (0% CPU 占用) ====================
+        function renderProgressNodes() {
+            const layer = document.getElementById('progress-nodes-layer');
+            if (!layer) return;
+            layer.innerHTML = '';
+
+            if (scanIntervalSec <= 0 || focusPollSec <= 0) return;
+
+            const totalNodes = Math.floor(scanIntervalSec / focusPollSec);
+            if (totalNodes <= 0 || totalNodes > 60) return;
+
+            for (let i = 1; i < totalNodes; i++) {
+                const pct = (i * focusPollSec / scanIntervalSec) * 100;
+                const pin = document.createElement('div');
+                pin.className = 'progress-node-pin active';
+                pin.id = `node-pin-${i}`;
+                pin.style.left = `${pct}%`;
+                pin.title = `第2级刷新节点 #${i} (约每 ${focusPollSec} 秒)`;
+                layer.appendChild(pin);
+            }
+            updateCountdownUI();
+        }
+
+        // 触发第 2 级刷新时的吃豆反馈 (0% CPU)
+        function triggerLevel2PulseAnimation(elapsed) {
+            const badge = document.getElementById('level2-pulse-badge');
+            if (badge) {
+                badge.className = 'level2-badge flash';
+                badge.innerHTML = `⚡ 第2级已刷新 (${elapsed}ms)`;
+                setTimeout(() => {
+                    badge.className = 'level2-badge';
+                    badge.innerHTML = `🟢 第2级 (${focusPollSec}s)`;
+                }, 750);
+            }
+            updateCountdownUI();
+        }
+
+        // ==================== 定时器控制（交易时段对齐） ====================
+        // 规则很简单：交易中就按设定频率轮询；休市就彻底停手，只在开盘前 10 分钟醒一次。
+        // 不再有"把间隔悄悄拉长到 300s"这种假刷新——没有新数据时刷新毫无意义。
+        function currentScanInterval() {
+            if (scanIntervalSec <= 0) return 0;
+            if (!isTradingNow()) return 0;                 // 休市不轮询
+            return dataMode === 'live' ? scanIntervalSec : Math.min(scanIntervalSec * 2, 120);
+        }
+        function focusPollIntervalSec() {
+            if (focusPollSec <= 0) return 0;
+            if (!isTradingNow()) return 0;
+            return dataMode === 'live' ? focusPollSec : Math.min(focusPollSec * 3, 30);
+        }
+
+        // 休市时的"一次性唤醒"定时器
+        let idleTimer = null;
+        let idleUiTimer = null;    // 休市期间仅刷新横幅文字的慢钟（60s，零网络请求）
+
+        // 决定当前该"轮询"还是"睡觉"
+        function applyRefreshSchedule() {
+            if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+            if (idleUiTimer) { clearInterval(idleUiTimer); idleUiTimer = null; }
+            const next = nextRefreshAt();
+            if (next) {
+                stopAllTimers();                       // 休市：一个网络定时器都不留
+                const delay = Math.max(1000, next.getTime() - Date.now());
+                idleTimer = setTimeout(() => {
+                    idleTimer = null;
+                    scanFullMarket(false);
+                }, delay);
+                // 只为了让"还有 X 小时"这句文案保持准确，不发任何请求
+                idleUiTimer = setInterval(() => {
+                    updateCountdownUI();
+                    updateDataSourceBanner();
+                }, 60000);
+                updateCountdownUI();
+                updateDataSourceBanner();
+                return;
+            }
+            startAllTimers();
+        }
+
+
+        function startAllTimers() {
+            stopAllTimers();
+            if (!isTradingNow()) { updateCountdownUI(); return; }   // 双保险：休市绝不起轮询
+            countdownRemaining = currentScanInterval();
+
+            // 1. 每秒更新倒计时进度条 (纯 UI, 无网络)
+            countdownTimer = setInterval(() => {
+                if (activeModalSecId || scanIntervalSec <= 0) return;
+                if (!isTradingNow()) { applyRefreshSchedule(); return; }  // 跨过收盘点立即转休眠
+                countdownRemaining--;
+                if (countdownRemaining <= 0) {
+                    scanFullMarket(false);
+                    countdownRemaining = currentScanInterval();
+                }
+                updateCountdownUI();
+            }, 1000);
+
+            // 2. 焦点池自调度轮询：每次按当前数据模式动态决定间隔，实时时快、空窗时自动降到 ≤60s
+            function scheduleFocusPoll() {
+                if (scanIntervalSec <= 0) return;
+                const intervalMs = Math.max(1000, focusPollIntervalSec() * 1000);
+                focusPollTimer = setTimeout(() => {
+                    if (!isTradingNow()) { applyRefreshSchedule(); return; }  // 同样：收盘即停
+                    if (!document.hidden && !activeModalSecId && isStep1Ready && focusQuotes.length > 0) {
+                        refreshFocusPoolPrices();
+                    }
+                    if (!document.hidden) scheduleFocusPoll();
+                }, intervalMs);
+            }
+            scheduleFocusPoll();
+        }
+
+        function stopAllTimers() {
+            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+            if (focusPollTimer) { clearTimeout(focusPollTimer); clearInterval(focusPollTimer); focusPollTimer = null; }
+            if (idleUiTimer) { clearInterval(idleUiTimer); idleUiTimer = null; }
+        }
+
+        function updateCountdownUI() {
+            const textEl = document.getElementById('countdown-status-text');
+            const progressEl = document.getElementById('countdown-progress-bar');
+            const timerDot = document.getElementById('compact-timer-dot');
+            const timerText = document.getElementById('compact-timer-text');
+
+            // 休市：明确告诉用户"不发请求、几时醒"，而不是继续假装倒计时
+            if (!isTradingNow()) {
+                const hint = idleHintText();
+                if (textEl) textEl.textContent = hint ? `🌙 休市 · 已停止请求 · ${hint}` : '🌙 休市 · 已停止请求';
+                if (progressEl) progressEl.style.width = '0%';
+                if (timerDot) timerDot.textContent = '🌙';
+                if (timerText) timerText.textContent = '休市';
+                document.querySelectorAll('.progress-node-pin').forEach(p => {
+                    if (!p.classList.contains('flash')) p.className = 'progress-node-pin eaten';
+                });
+                return;
+            }
+
+            if (scanIntervalSec <= 0) {
+                if (textEl) textEl.textContent = `⏸️ 已暂停自动全盘重扫 | 焦点池 ${focusPollSec}秒 轮询中`;
+                if (progressEl) progressEl.style.width = '100%';
+                if (timerDot) timerDot.textContent = '⏸️';
+                if (timerText) timerText.textContent = '已暂停';
+                return;
+            }
+
+            const pct = Math.max(0, Math.min(100, (countdownRemaining / scanIntervalSec) * 100));
+            if (textEl) {
+                textEl.textContent = `⚡ 距第1级全盘雷达重扫还有 ${countdownRemaining} 秒`;
+            }
+            if (progressEl) {
+                progressEl.style.width = `${pct}%`;
+            }
+            if (timerDot) {
+                timerDot.textContent = '🟢';
+            }
+            if (timerText) {
+                timerText.textContent = `${countdownRemaining}s`;
+            }
+
+            // 更新打点节点活跃/已吃状态 (保留正在 flash 的高光)
+            const totalNodes = Math.floor(scanIntervalSec / focusPollSec);
+            for (let i = 1; i < totalNodes; i++) {
+                const pin = document.getElementById(`node-pin-${i}`);
+                if (pin && !pin.classList.contains('flash')) {
+                    const nodePct = (i * focusPollSec / scanIntervalSec) * 100;
+                    pin.className = (nodePct <= pct) ? 'progress-node-pin active' : 'progress-node-pin eaten';
+                }
+            }
+        }
+
+        // ==================== 批量抓取：合约池 → ulist 分批 ====================
+        // 单批 150 个 secid（实测 200 亦可，留余量避免 URL 过长被网关截断）
+        const ULIST_BATCH = 150;
+        const ULIST_FIELDS = 'f12,f13,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18,f124';
+        const ULIST_UT = 'bd1d9ddb04089700cf9c27f6f7426281';
+        // 东财有多个行情网关，同一个 IP 被某个网关限流时换一个往往就能通
+        const ULIST_HOSTS = ['push2.eastmoney.com', '82.push2.eastmoney.com', 'push2delay.eastmoney.com'];
+        let lastBatchStat = { batches: 0, okBatches: 0, got: 0 };
+        let focusPollTries = 0;   // 焦点池每轮换一个网关，避免长期打在同一个被限流的 host 上
+
+        function ulistUrl(secids, hostIdx) {
+            const host = ULIST_HOSTS[(hostIdx || 0) % ULIST_HOSTS.length];
+            return 'https://' + host + '/api/qt/ulist.np/get?secids=' + secids
+                + '&fltt=2&invt=2&fields=' + ULIST_FIELDS + '&ut=' + ULIST_UT + '&_t=' + Date.now();
+        }
+
+        // 通用东财 JSONP 加载器：用 <script> 加载，天生不受 CORS 约束。
+        // 事实依据：无浏览器环境下 ulist 能取到完整收盘，但浏览器 fetch 被 CORS 拦成 0/N；
+        // 而东财 push2 系列支持 cb= 回调（实测返回 testcb({...});）。脚本标签不校验 ACAO，可绕过。
+        function loadEmJsonp(baseUrl, timeoutMs) {
+            return new Promise((resolve, reject) => {
+                const cbName = '__em_cb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+                const script = document.createElement('script');
+                const sep = baseUrl.indexOf('?') >= 0 ? '&' : '?';
+                let settled = false;
+                const timer = setTimeout(() => finish(null, new Error('jsonp timeout')), timeoutMs || 6000);
+                function finish(data, err) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                    if (err) reject(err); else resolve(data);
+                }
+                window[cbName] = function (data) { finish(data, null); };
+                script.onerror = function () { finish(null, new Error('jsonp script error')); };
+                script.src = baseUrl + sep + 'cb=' + cbName;
+                document.head.appendChild(script);
+            });
+        }
+
+        // 拉取给定 secid 的报价；返回原始 diff 数组。任一批次失败不影响其余批次。
+        // 东财对同一 IP 有频控，且浏览器 fetch 会被 CORS 拦截 → 每批先走 JSONP，失败再退 fetch。
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        async function fetchSingleBatch(chunk, ci) {
+            let lastErr = '';
+            for (let attempt = 0; attempt < 2; attempt++) {
+                if (attempt > 0) await sleep(150);
+                const url = ulistUrl(chunk.join(','), ci * 3 + attempt);
+                // ① JSONP 优先（绕过浏览器 CORS，实测 ~30-70ms 极速响应）
+                try {
+                    const json = await loadEmJsonp(url, 3000);
+                    const diff = (json && json.data && Array.isArray(json.data.diff)) ? json.data.diff : [];
+                    if (diff.length) return diff;
+                    lastErr = 'jsonp 返回空';
+                } catch (e) { lastErr = 'jsonp: ' + ((e && e.message) || e); }
+                // ② fetch 兜底（带 1500ms 超时中断）
+                try {
+                    const ctrl = new AbortController();
+                    const tid = setTimeout(() => ctrl.abort(), 1500);
+                    const resp = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+                    clearTimeout(tid);
+                    const json = await resp.json();
+                    const diff = (json && json.data && Array.isArray(json.data.diff)) ? json.data.diff : [];
+                    if (diff.length) return diff;
+                    lastErr = 'fetch 返回空';
+                } catch (e) { lastErr = 'fetch: ' + ((e && e.message) || e); }
+            }
+            console.warn('[ulist] batch ' + (ci + 1) + ' 失败：' + lastErr);
+            return [];
+        }
+
+        async function fetchQuotesBySecids(secids) {
+            const chunks = [];
+            for (let i = 0; i < secids.length; i += ULIST_BATCH) chunks.push(secids.slice(i, i + ULIST_BATCH));
+
+            // 并发拉取所有批次：从过去的串行数秒直接提速至 ~150-250ms 全量完成
+            const promises = chunks.map((chunk, ci) => fetchSingleBatch(chunk, ci));
+            const results = await Promise.allSettled(promises);
+
+            const out = [];
+            let okBatches = 0;
+            results.forEach((res) => {
+                if (res.status === 'fulfilled' && Array.isArray(res.value) && res.value.length) {
+                    okBatches++;
+                    res.value.forEach(d => out.push(d));
+                }
+            });
+
+            lastBatchStat = { batches: chunks.length, okBatches: okBatches, got: out.length };
+            console.log('[ulist] 并发批次统计', lastBatchStat);
+            return out;
+        }
+
+        // 东财 clist 全市场列表接口（备用快速兜底）：
+        // 抓取多头涨幅榜 (po=1) 与 空头跌幅榜 (po=0)，合并去重
+        const CLIST_FS = 'm:113,m:114,m:115,m:220,m:142,m:225';
+        const CLIST_HOSTS = ['https://82.push2.eastmoney.com', 'https://push2.eastmoney.com'];
+        async function fetchQuotesViaClist() {
+            let lastErr = null;
+            for (const host of CLIST_HOSTS) {
+                const makeUrl = (po) => host + '/api/qt/clist/get'
+                    + '?pn=1&pz=100&po=' + po + '&np=1&fltt=2&invt=2&fid=f3'
+                    + '&fs=' + CLIST_FS
+                    + '&fields=' + ULIST_FIELDS
+                    + '&ut=' + ULIST_UT + '&_t=' + Date.now();
+                try {
+                    const ctrl = new AbortController();
+                    const tid = setTimeout(() => ctrl.abort(), 1500);
+                    const respUp = await fetch(makeUrl(1), { cache: 'no-store', signal: ctrl.signal });
+                    const jsonUp = respUp.ok ? await respUp.json() : null;
+
+                    const respDown = await fetch(makeUrl(0), { cache: 'no-store', signal: ctrl.signal });
+                    const jsonDown = respDown.ok ? await respDown.json() : null;
+                    clearTimeout(tid);
+
+                    const diffUp = (jsonUp && jsonUp.data && Array.isArray(jsonUp.data.diff)) ? jsonUp.data.diff : [];
+                    const diffDown = (jsonDown && jsonDown.data && Array.isArray(jsonDown.data.diff)) ? jsonDown.data.diff : [];
+
+                    const map = new Map();
+                    [...diffUp, ...diffDown].forEach(item => {
+                        if (item && item.f12) {
+                            const secid = `${item.f13}.${item.f12}`;
+                            map.set(secid, item);
+                        }
+                    });
+                    const combined = Array.from(map.values());
+                    if (combined.length) {
+                        console.log(`[clist] 从 ${host} 拿到 ${combined.length} 条 (多空双向全覆盖)`);
+                        return combined;
+                    }
+                } catch (e) {
+                    lastErr = e;
+                }
+            }
+            console.warn('[clist] 快速检测不可用：' + ((lastErr && lastErr.message) || lastErr));
+            return [];
+        }
+
+        // ==================== 云端收盘快照（Cloudflare Worker Cron + KV） ====================
+        // Worker 每天 15:05 / 23:35 / 02:35（北京时间）用 Cron 自动抓一次东财全市场并存入 KV；
+        // 页面休市打开时先读 /api/snapshot，命中即直接渲染，一个东财请求都不发（避免收盘后抓不到）。
+        // 仅服务端独占定时抓取与落库，前端纯只读，杜绝客户端脏快照污染。
+        const SNAP_MAX_AGE_MS = 48 * 3600 * 1000;   // 快照超过 48 小时视为过期，不用
+
+        async function fetchCloudSnapshot() {
+            try {
+                const resp = await fetch('/api/snapshot', { cache: 'no-store' });
+                if (!resp.ok) return null;
+                const json = await resp.json();
+                if (!json || !Array.isArray(json.diff) || !json.diff.length) return null;
+                return json;
+            } catch (e) { return null; }
+        }
+
+        // ==================== 第一步：全市场雷达初筛（合约池 + 批量，不依赖列表接口） ====================
+        // 原实现用 clist 列表接口（一次拿全市场）。该接口在非交易时段/限流时返回空甚至直接断连，
+        // 于是界面白屏、且被误判成"非交易时段无数据"。现改为自建合约池 + ulist 批量：
+        // 实测 ulist 在凌晨休市时依然返回完整收盘（燃油2612 -5.99% 可复现），无需任何快照搬运。
+        // —— 但浏览器 fetch/JSONP 可能被 CORS / 外壳 CSP / 拦截插件掐断，故东财拿不到时自动降级到新浪日线。
+
+        // 新浪兜底：东财不可用时，逐合约取日线（getDailyKLine），用最近两日收盘算涨跌幅。
+        // 新浪 JSONP 在用户环境已验证可用（K 线图即走新浪），是最稳的兜底源。
+        // 新浪 symbol = 合约代码大写（如 fu2612 → FU2612）；成交量为日线 v 字段（手）。
+        async function scanViaSina(pool) {
+            const out = [];
+            const CONC = 8; // 并发上限，避免一次性塞几百个 <script>
+            let idx = 0;
+            async function worker() {
+                while (idx < pool.length) {
+                    const item = pool[idx++];
+                    try {
+                        const sym = (item.code || '').toUpperCase();
+                        if (!sym) continue;
+                        const url = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getDailyKLine?symbol=' + sym;
+                        const bars = await loadSinaFuturesJsonp(url);
+                        if (Array.isArray(bars) && bars.length >= 2) {
+                            const last = bars[bars.length - 1];
+                            const prev = bars[bars.length - 2];
+                            const price = parseFloat(last.c) || 0;
+                            const prevClose = parseFloat(prev.c) || 0;
+                            const change = price - prevClose;
+                            const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+                            const vol = parseInt(last.v) || 0;
+                            const isLiquid = (vol >= currentVolThreshold);
+                            if (price > 0 && (isLiquid || isFavorite(item.secid, item.code))) {
+                                out.push({
+                                    secid: item.secid, code: item.code, market: item.market, name: sym,
+                                    price: price, changePercent: changePercent, change: change,
+                                    vol: vol, amount: 0,
+                                    high: parseFloat(last.h) || 0, low: parseFloat(last.l) || 0,
+                                    open: parseFloat(last.o) || 0, prevSettle: prevClose,
+                                    tradeTime: 0,
+                                    isLiquid: isLiquid
+                                });
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+            const ws = [];
+            for (let i = 0; i < CONC; i++) ws.push(worker());
+            await Promise.all(ws);
+            return out;
+        }
+
+        // 把东财原始 diff（clist / KV 快照同结构）转成页面用的 quote 列表。
+        // 实时抓取与读取云端快照共用此函数，确保两路口径一致（阈值改动也即时生效）。
+        function buildQuoteMapFromRaw(rawList) {
+            const quoteMap = {};
+            (rawList || []).forEach(item => {
+                const secid = `${item.f13}.${item.f12}`;
+                if (!quoteMap[secid] && item.f2 && item.f2 !== '-') {
+                    const name = item.f14 || '';
+                    const code = item.f12 || '';
+                    const vol = parseInt(item.f5) || 0;
+                    const amount = parseFloat(item.f6) || 0;
+
+                    const tradeTime = item.f124 ? parseInt(item.f124, 10) * 1000 : 0;
+
+                    // 1. 物理合约过滤：必须带具体年份月份，杜绝主连/主力/指数/当月/临近交割
+                    if (!isPhysicalContract(name, code)) return;
+
+                    // 2. 成交量硬过滤（含自选豁免）
+                    const isLiquid = (vol >= currentVolThreshold);
+                    if (!isLiquid && !isFavorite(secid, code)) return;
+
+                    quoteMap[secid] = {
+                        secid: secid,
+                        code: item.f12,
+                        market: item.f13,
+                        name: name,
+                        price: parseFloat(item.f2) || 0,
+                        changePercent: parseFloat(item.f3) || 0,
+                        change: parseFloat(item.f4) || 0,
+                        vol: vol,
+                        amount: amount,
+                        high: parseFloat(item.f15) || 0,
+                        low: parseFloat(item.f16) || 0,
+                        open: parseFloat(item.f17) || 0,
+                        prevSettle: parseFloat(item.f18) || 0,
+                        tradeTime: tradeTime,
+                        isLiquid: isLiquid
+                    };
+                }
+            });
+            return Object.values(quoteMap).filter(q => q.price > 0);
+        }
+
+        async function scanFullMarket(showAnimation) {
+            if (activeModalSecId || isScanning) return;
+            isScanning = true;
+
+            const textEl = document.getElementById('countdown-status-text');
+            if (textEl) textEl.textContent = `⏳ 正在拉取全市场合约报价…`;
+            const timerDot = document.getElementById('compact-timer-dot');
+            const timerText = document.getElementById('compact-timer-text');
+            if (timerDot) timerDot.textContent = '⚡';
+            if (timerText) timerText.textContent = '重扫中';
+
+            try {
+                // 0) 休市且不在开盘前窗口：先读云端收盘快照（Cron 已在 15:05 / 23:35 抓好存入 KV）
+                //    命中即直接渲染，一个东财请求都不发；避免收盘后接口抓不到的风险。
+                if (!isTradingNow() && !inPreOpenWindow()) {
+                    const snap = await fetchCloudSnapshot();
+                    if (snap && snap.ts && (Date.now() - snap.ts) < SNAP_MAX_AGE_MS) {
+                        const snapQuotes = buildQuoteMapFromRaw(snap.diff);
+                        const hasUp = snapQuotes.some(q => q.changePercent > 0);
+                        const hasDown = snapQuotes.some(q => q.changePercent < 0);
+                        // 校验快照完整性：必须同时包含多头与空头，且合约数充足，杜绝残缺单向快照阻断全盘扫描
+                        if (snapQuotes.length >= 25 && hasUp && hasDown) {
+                            allPhysicalQuotes = snapQuotes;
+                            isStep1Ready = true;
+                            lastGoodQuotes = snapQuotes.slice();
+                            lastGoodTs = snap.ts;
+                            quoteSource = 'snapshot';
+                            dataMode = 'live';
+                            finishScanPass();
+                            return;
+                        }
+                    }
+                }
+
+                // 1) 东财 ulist 批量合约池（JSONP 跨域并发秒级直通，全量 ~150-250ms）
+                quoteSource = 'ulist';
+                let rawList = await fetchQuotesBySecids(buildContractPool().map(p => p.secid));
+
+                // 2) ulist 失败 → 东财 clist 列表快速检测兜底
+                if (!rawList.length) {
+                    quoteSource = 'clist';
+                    rawList = await fetchQuotesViaClist();
+                }
+
+                // 3) 东财两条都失败 → 新浪日线兜底（逐合约）
+                if (!rawList.length) {
+                    if (textEl) textEl.textContent = `⏳ 东财不可用，正通过新浪补全精选合约…`;
+                    const sinaQuotes = await scanViaSina(buildContractPool(SINA_POOL_MONTHS));
+                    if (sinaQuotes.length) {
+                        allPhysicalQuotes = sinaQuotes;
+                        isStep1Ready = true;
+                        lastGoodQuotes = sinaQuotes.slice();
+                        lastGoodTs = Date.now();
+                        quoteSource = 'sina';
+                        dataMode = 'live';
+                        finishScanPass();
+                        return;
+                    }
+                    if (lastGoodQuotes.length) {
+                        allPhysicalQuotes = lastGoodQuotes.slice();
+                        dataMode = 'cache';
+                    } else {
+                        dataMode = 'empty';
+                    }
+                    finishScanPass();
+                    return;
+                }
+
+                allPhysicalQuotes = buildQuoteMapFromRaw(rawList);
+                isStep1Ready = true;
+
+                // 仅在当前运行态内存中保留最近一次成功行情（不写入 localStorage）
+                lastGoodQuotes = allPhysicalQuotes.slice();
+                lastGoodTs = Date.now();
+
+                dataMode = 'live';
+                finishScanPass();
+            } catch (err) {
+                console.error('Scan full market error:', err);
+                if (lastGoodQuotes.length) {
+                    allPhysicalQuotes = lastGoodQuotes.slice();
+                    dataMode = 'cache';
+                } else {
+                    dataMode = 'empty';
+                }
+                finishScanPass();
+            } finally {
+                isScanning = false;
+            }
+        }
+
+        // 一次扫描结束后统一收尾：渲染 + 横幅 + 重新决定刷新节奏
+        function finishScanPass() {
+            filterAndRenderFocusPool();
+            const el = document.getElementById('last-update-time');
+            if (el) el.textContent = new Date().toTimeString().split(' ')[0];
+            updateDataSourceBanner();
+            applyRefreshSchedule();
+        }
+
+        // 手动刷新：休市时也可以主动拉一次（这条不违反"休市不自动刷"的约定）
+        async function manualRefresh() {
+            const btn = document.getElementById('manual-refresh-btn');
+            if (btn) { btn.disabled = true; btn.textContent = '⟳ 拉取中…'; }
+            try {
+                fetchGlobalWatchlist(); // 手动刷新时同步拉取一次最新云端自选
+                await scanFullMarket(true);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '⟳ 手动刷新'; }
+            }
+        }
+
+        // ==================== 第二步：焦点池高频轻量轮询 (带节拍打点视觉反馈) ====================
+        async function refreshFocusPoolPrices() {
+            if (!isStep1Ready || activeModalSecId || focusQuotes.length === 0) return;
+
+            const t0 = performance.now();
+            const secids = focusQuotes.map(q => q.secid).join(',');
+            const url = ulistUrl(secids, focusPollTries++);
+
+            try {
+                let json = null;
+                try { json = await loadEmJsonp(url, 5000); } catch (e) { json = null; }
+                if (!json || !json.data || !json.data.diff) {
+                    try { const resp = await fetch(url, { cache: 'no-store' }); json = await resp.json(); } catch (e) { json = null; }
+                }
+                if (json && json.data && json.data.diff) {
+                    const diff = json.data.diff;
+                    diff.forEach(item => {
+                        const secid = `${item.f13}.${item.f12}`;
+                        const target = focusQuotes.find(q => q.secid === secid);
+                        if (target && item.f2 && item.f2 !== '-') {
+                            target.price = parseFloat(item.f2) || target.price;
+                            target.changePercent = parseFloat(item.f3) || target.changePercent;
+                            target.change = parseFloat(item.f4) || target.change;
+                            target.vol = parseInt(item.f5) || target.vol;
+                            target.amount = parseFloat(item.f6) || target.amount;
+                            target.high = parseFloat(item.f15) || target.high;
+                            target.low = parseFloat(item.f16) || target.low;
+                            if (item.f124) target.tradeTime = parseInt(item.f124, 10) * 1000;
+                        }
+                    });
+                    // 原地轻量更新 DOM 价格数值，不重新构建整树
+                    updateDOMValuesInPlace();
+                    const elapsed = Math.round(performance.now() - t0);
+                    triggerLevel2PulseAnimation(elapsed);
+                }
+            } catch(e) {
+                console.warn('Lightweight focus poll error:', e);
+            }
+        }
+
+        // 当前品种聚合状态及用户各卡片选择月份记录
+        let currentVarietyGroups = [];
+        const activeVarietyMonthMap = {};
+
+        // 筛选并构建当前焦点池
+        function filterAndRenderFocusPool() {
+            let list = allPhysicalQuotes;
+            let filtered = [];
+
+            if (currentMode === 'custom') {
+                filtered = allPhysicalQuotes.filter(q => isFavorite(q.secid, q.code));
+                currentVarietyGroups = [];
+                focusQuotes = filtered;
+            } else if (currentMode === 'surge') {
+                filtered = list.filter(q => q.vol >= currentVolThreshold && q.changePercent >= currentThreshold && isQuoteActiveInCurrentSession(q));
+                filtered.sort((a, b) => b.changePercent - a.changePercent);
+                currentVarietyGroups = [];
+                focusQuotes = filtered;
+            } else if (currentMode === 'plunge') {
+                filtered = list.filter(q => q.vol >= currentVolThreshold && q.changePercent <= -currentThreshold && isQuoteActiveInCurrentSession(q));
+                filtered.sort((a, b) => a.changePercent - b.changePercent);
+                currentVarietyGroups = [];
+                focusQuotes = filtered;
+            } else {
+                // 默认异动榜 'abs' 模式：按品种聚合收拢
+                filtered = list.filter(q => q.vol >= currentVolThreshold && Math.abs(q.changePercent) >= currentThreshold && isQuoteActiveInCurrentSession(q));
+                currentVarietyGroups = groupQuotesByVariety(filtered);
+                
+                // 汇总当前所有品种的活跃月份合约纳入 focusQuotes 以供第2级轮询刷新
+                const allGroupQuotes = [];
+                currentVarietyGroups.forEach(g => {
+                    if (!activeVarietyMonthMap[g.variety] || !g.months.some(m => m.secid === activeVarietyMonthMap[g.variety])) {
+                        activeVarietyMonthMap[g.variety] = g.leadQuote.secid;
+                    }
+                    g.activeSecid = activeVarietyMonthMap[g.variety];
+                    g.months.forEach(m => allGroupQuotes.push(m));
+                });
+                focusQuotes = allGroupQuotes;
+            }
+
+            let totalUp = 0;
+            let totalDown = 0;
+            if (currentMode === 'abs') {
+                currentVarietyGroups.forEach(g => {
+                    const lead = g.leadQuote;
+                    if (lead.change > 0) totalUp++;
+                    else if (lead.change < 0) totalDown++;
+                });
+                document.getElementById('stat-total').textContent = currentVarietyGroups.length;
+            } else {
+                filtered.forEach(q => {
+                    if (q.change > 0) totalUp++;
+                    else if (q.change < 0) totalDown++;
+                });
+                document.getElementById('stat-total').textContent = filtered.length;
+            }
+
+            document.getElementById('stat-up').textContent = totalUp;
+            document.getElementById('stat-down').textContent = totalDown;
+
+            updateFilterSummaryText();
+            if (currentMode === 'abs') {
+                renderVarietyCardsDOM(currentVarietyGroups);
+            } else {
+                renderCardsDOM(filtered);
+            }
+        }
+
+        // 渲染品种聚合卡片 DOM 结构 (异动榜主视图)
+        function renderVarietyCardsDOM(groups) {
+            const container = document.getElementById('cards-container');
+            if (groups.length === 0) {
+                const offHours = !isTradingNow();
+                const isNightWin = isNightSessionWindow();
+                const nightExtraHint = isNightWin
+                    ? '<p style="margin-top: 6px; font-size: 12px; color: #58a6ff;">🌙 当前夜盘时段已自动隔离无夜盘的日盘定格合约（可在「⭐ 我的自选」中查看所有已关注合约）</p>'
+                    : '';
+                container.innerHTML = `
+                    <div style="grid-column: 1/-1; padding: 50px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-color); border-radius: 12px; color: var(--text-muted);">
+                        <h3>当前门禁下暂无异动品种（成交量 ≥ ${currentVolThreshold}手 且 |涨跌幅| ≥ ${currentThreshold}%）</h3>
+                        <p style="margin-top: 6px; font-size: 13px;">已自动屏蔽虚拟主连、临近交割月与僵尸品种，可调整上方门禁阈值</p>
+                        ${nightExtraHint}
+                        <p style="margin-top: 6px; font-size: 12px; opacity:.8;">
+                            当前 ${allPhysicalQuotes.length} 个合约通过成交量门禁${offHours ? ' · 现为休市时段，显示的是最近交易时段收盘数据' : ''}
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = groups.map(group => {
+                const activeSecid = activeVarietyMonthMap[group.variety] || group.activeSecid || group.leadQuote.secid;
+                const activeQuote = group.months.find(m => m.secid === activeSecid) || group.leadQuote;
+                group.activeSecid = activeQuote.secid;
+
+                const isUp = activeQuote.change > 0;
+                const isDown = activeQuote.change < 0;
+                const sign = isUp ? '+' : '';
+                const priceClass = isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat';
+                const badgeClass = isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge';
+                const ratio = (activeQuote.high > activeQuote.low && activeQuote.price >= activeQuote.low) ?
+                    Math.min(100, Math.max(0, ((activeQuote.price - activeQuote.low) / (activeQuote.high - activeQuote.low)) * 100)) : 50;
+
+                let amountStr = '--';
+                if (activeQuote.amount >= 100000000) amountStr = (activeQuote.amount / 100000000).toFixed(2) + ' 亿';
+                else if (activeQuote.amount >= 10000) amountStr = (activeQuote.amount / 10000).toFixed(1) + ' 万';
+                else if (activeQuote.amount > 0) amountStr = activeQuote.amount.toLocaleString();
+
+                const fav = isFavorite(activeQuote.secid, activeQuote.code);
+                const starIcon = fav ? '★' : '☆';
+                const starClass = fav ? 'star-btn star-active' : 'star-btn star-inactive';
+                const starTitle = fav ? '点击取消自选' : '点击加入自选';
+
+                const isActive = isQuoteActiveInCurrentSession(activeQuote);
+                const isNightWin = isNightSessionWindow();
+                const tradeTimeStr = activeQuote.tradeTime ? formatTradeTime(activeQuote.tradeTime) : '';
+                const sessionTagHtml = isNightWin
+                    ? (!isActive
+                        ? `<span class="tag-stale" title="该品种无夜盘或今晚未开盘 (最后成交: ${tradeTimeStr})">💤 日盘定格</span>`
+                        : `<span class="tag-night-active" title="夜盘活跃撮合中 (最后成交: ${tradeTimeStr})">🌙 夜盘</span>`)
+                    : '';
+
+                // 渲染各月份胶囊药丸 (Pills，首位即成交量最大的主力合约)
+                const monthPillsHtml = group.months.map((m, idx) => {
+                    const isAct = m.secid === activeQuote.secid;
+                    const mUp = m.changePercent > 0;
+                    const mDown = m.changePercent < 0;
+                    const mSign = mUp ? '+' : '';
+                    const pCls = mUp ? 'pill-up' : mDown ? 'pill-down' : '';
+                    const volLabel = m.vol >= 10000 ? (m.vol / 10000).toFixed(1) + '万手' : (m.vol > 0 ? m.vol + '手' : '--');
+                    const pillTitle = `${m.code} (${mSign}${m.changePercent.toFixed(2)}%) 成交: ${volLabel}${idx === 0 ? ' [成交量第一/主力]' : ''}`;
+                    return `<button class="month-pill ${isAct ? 'active' : ''} ${m.isLead ? 'is-lead' : ''} ${pCls}"
+                                    data-pill-secid="${m.secid}"
+                                    onclick="switchCardMonth('${group.variety}', '${m.secid}', event)"
+                                    title="${pillTitle}">
+                        ${m.monthCode} ${mSign}${m.changePercent.toFixed(1)}%${m.isLead ? ' 👑' : ''}
+                    </button>`;
+                }).join('');
+
+                return `
+                <div class="card" id="card-variety-${group.variety}" data-active-secid="${activeQuote.secid}" onclick="openChartModal(this.getAttribute('data-active-secid'))">
+                    <div class="card-header">
+                        <div class="contract-info">
+                            <span class="contract-name">${group.name}</span>
+                            <span class="tag-physical">真实</span>
+                            ${sessionTagHtml}
+                            <span class="contract-code">${activeQuote.code}</span>
+                        </div>
+                        
+                        <div class="header-pnl-group">
+                            <span class="change-badge ${badgeClass}" id="badge-${group.variety}">${sign}${activeQuote.changePercent.toFixed(2)}%</span>
+                            <button class="${starClass}" id="star-${group.variety}" onclick="toggleFavorite(document.getElementById('card-variety-${group.variety}').getAttribute('data-active-secid'), '${activeQuote.code}', event)" title="${starTitle}">${starIcon}</button>
+                        </div>
+                    </div>
+
+                    <div class="month-pills" id="pills-${group.variety}">
+                        ${monthPillsHtml}
+                    </div>
+                    
+                    <div class="hero-section">
+                        <span class="latest-price ${priceClass}" id="price-${group.variety}">${activeQuote.price > 0 ? activeQuote.price.toLocaleString(undefined, {minimumFractionDigits: activeQuote.price % 1 === 0 ? 0 : 2, maximumFractionDigits: 2}) : '--'}</span>
+                        <span class="price-diff-text ${priceClass}" id="diff-${group.variety}">${sign}${activeQuote.change.toFixed(1)} (振幅 ${activeQuote.low > 0 ? (((activeQuote.high - activeQuote.low)/activeQuote.low)*100).toFixed(2) + '%' : '--'})</span>
+                    </div>
+
+                    <div class="range-bar-wrapper">
+                        <div class="range-bar-labels">
+                            <span id="low-${group.variety}">低: ${activeQuote.low > 0 ? activeQuote.low : '--'}</span>
+                            <span id="high-${group.variety}">高: ${activeQuote.high > 0 ? activeQuote.high : '--'}</span>
+                        </div>
+                        <div class="range-track">
+                            <div class="range-progress" id="prog-${group.variety}" style="width: ${ratio}%;"></div>
+                            <div class="range-point" id="point-${group.variety}" style="left: ${ratio}%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="details-grid">
+                        <div class="detail-row"><span class="detail-label">昨结算</span><span class="detail-value" id="settle-${group.variety}">${activeQuote.prevSettle > 0 ? activeQuote.prevSettle : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">开盘价</span><span class="detail-value" id="open-${group.variety}">${activeQuote.open > 0 ? activeQuote.open : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">成交量</span><span class="detail-value" id="vol-${group.variety}" style="color:#58a6ff; font-weight:bold;">${activeQuote.vol > 0 ? activeQuote.vol.toLocaleString() + '手' : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">成交额</span><span class="detail-value" id="amount-${group.variety}">${amountStr}</span></div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // 原地切换品种卡片内的显示月份 (0% 页面抖动，0ms 重新布局)
+        function switchCardMonth(varietyKey, targetSecid, event) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            activeVarietyMonthMap[varietyKey] = targetSecid;
+            const group = currentVarietyGroups.find(g => g.variety === varietyKey);
+            if (!group) return;
+            group.activeSecid = targetSecid;
+            const targetQuote = group.months.find(m => m.secid === targetSecid);
+            if (!targetQuote) return;
+
+            const card = document.getElementById(`card-variety-${varietyKey}`);
+            if (!card) return;
+
+            card.setAttribute('data-active-secid', targetSecid);
+
+            // 更新头部合约代码
+            const codeEl = card.querySelector('.contract-code');
+            if (codeEl) codeEl.textContent = targetQuote.code;
+
+            // 更新星标自选按钮
+            const favBtn = document.getElementById(`star-${varietyKey}`);
+            if (favBtn) {
+                const fav = isFavorite(targetQuote.secid, targetQuote.code);
+                favBtn.className = fav ? 'star-btn star-active' : 'star-btn star-inactive';
+                favBtn.textContent = fav ? '★' : '☆';
+                favBtn.setAttribute('onclick', `toggleFavorite('${targetQuote.secid}', '${targetQuote.code}', event)`);
+            }
+
+            // 更新涨跌Badge
+            const badgeEl = document.getElementById(`badge-${varietyKey}`);
+            const isUp = targetQuote.change > 0;
+            const isDown = targetQuote.change < 0;
+            const sign = isUp ? '+' : '';
+            const badgeClass = isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge';
+            if (badgeEl) {
+                badgeEl.className = `change-badge ${badgeClass}`;
+                badgeEl.textContent = `${sign}${targetQuote.changePercent.toFixed(2)}%`;
+            }
+
+            // 更新大字价格与差额
+            const priceEl = document.getElementById(`price-${varietyKey}`);
+            const priceClass = isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat';
+            if (priceEl) {
+                priceEl.className = `latest-price ${priceClass}`;
+                priceEl.textContent = targetQuote.price > 0 ? targetQuote.price.toLocaleString(undefined, {minimumFractionDigits: targetQuote.price % 1 === 0 ? 0 : 2, maximumFractionDigits: 2}) : '--';
+            }
+            const diffEl = document.getElementById(`diff-${varietyKey}`);
+            if (diffEl) {
+                diffEl.className = `price-diff-text ${priceClass}`;
+                diffEl.textContent = `${sign}${targetQuote.change.toFixed(1)} (振幅 ${targetQuote.low > 0 ? (((targetQuote.high - targetQuote.low)/targetQuote.low)*100).toFixed(2) + '%' : '--'})`;
+            }
+
+            // 更新日内区间条
+            const ratio = (targetQuote.high > targetQuote.low && targetQuote.price >= targetQuote.low) ?
+                Math.min(100, Math.max(0, ((targetQuote.price - targetQuote.low) / (targetQuote.high - targetQuote.low)) * 100)) : 50;
+            const lowEl = document.getElementById(`low-${varietyKey}`);
+            const highEl = document.getElementById(`high-${varietyKey}`);
+            const progEl = document.getElementById(`prog-${varietyKey}`);
+            const pointEl = document.getElementById(`point-${varietyKey}`);
+            if (lowEl) lowEl.textContent = `低: ${targetQuote.low > 0 ? targetQuote.low : '--'}`;
+            if (highEl) highEl.textContent = `高: ${targetQuote.high > 0 ? targetQuote.high : '--'}`;
+            if (progEl) progEl.style.width = `${ratio}%`;
+            if (pointEl) pointEl.style.left = `${ratio}%`;
+
+            // 更新详细成交量与额
+            let amountStr = '--';
+            if (targetQuote.amount >= 100000000) amountStr = (targetQuote.amount / 100000000).toFixed(2) + ' 亿';
+            else if (targetQuote.amount >= 10000) amountStr = (targetQuote.amount / 10000).toFixed(1) + ' 万';
+            else if (targetQuote.amount > 0) amountStr = targetQuote.amount.toLocaleString();
+
+            const settleEl = document.getElementById(`settle-${varietyKey}`);
+            const openEl = document.getElementById(`open-${varietyKey}`);
+            const volEl = document.getElementById(`vol-${varietyKey}`);
+            const amountEl = document.getElementById(`amount-${varietyKey}`);
+            if (settleEl) settleEl.textContent = targetQuote.prevSettle > 0 ? targetQuote.prevSettle : '--';
+            if (openEl) openEl.textContent = targetQuote.open > 0 ? targetQuote.open : '--';
+            if (volEl) volEl.textContent = targetQuote.vol > 0 ? targetQuote.vol.toLocaleString() + '手' : '--';
+            if (amountEl) amountEl.textContent = amountStr;
+
+            // 更新各 month-pill 激活样式
+            const pills = card.querySelectorAll('.month-pill');
+            pills.forEach(p => {
+                const pSecid = p.getAttribute('data-pill-secid');
+                p.classList.toggle('active', pSecid === targetSecid);
+            });
+        }
+
+        // 渲染单合约常规卡片 DOM 结构 (我的自选视图)
+        function renderCardsDOM(list) {
+            const container = document.getElementById('cards-container');
+            if (list.length === 0) {
+                const offHours = !isTradingNow();
+                const isNightWin = isNightSessionWindow();
+                const nightExtraHint = isNightWin
+                    ? '<p style="margin-top: 6px; font-size: 12px; color: #58a6ff;">🌙 当前夜盘时段已自动隔离无夜盘的日盘定格合约（可在「⭐ 我的自选」中查看所有已关注合约）</p>'
+                    : '';
+                container.innerHTML = `
+                    <div style="grid-column: 1/-1; padding: 50px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-color); border-radius: 12px; color: var(--text-muted);">
+                        <h3>暂无自选合约</h3>
+                        <p style="margin-top: 6px; font-size: 13px;">点击右上角 ⚙️ 打开抽屉或在「🔥 异动榜」中点击 ★ 即可将合约添加至自选</p>
+                        ${nightExtraHint}
+                        <p style="margin-top: 6px; font-size: 12px; opacity:.8;">
+                            当前全市场 ${allPhysicalQuotes.length} 个合约正在监控中${offHours ? ' · 现为休市时段，显示的是最近交易时段收盘数据' : ''}
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = list.map(data => {
+                const isUp = data.change > 0;
+                const isDown = data.change < 0;
+                const sign = isUp ? '+' : '';
+                const priceClass = isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat';
+                const badgeClass = isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge';
+                const ratio = (data.high > data.low && data.price >= data.low) ?
+                    Math.min(100, Math.max(0, ((data.price - data.low) / (data.high - data.low)) * 100)) : 50;
+
+                let amountStr = '--';
+                if (data.amount >= 100000000) amountStr = (data.amount / 100000000).toFixed(2) + ' 亿';
+                else if (data.amount >= 10000) amountStr = (data.amount / 10000).toFixed(1) + ' 万';
+                else if (data.amount > 0) amountStr = data.amount.toLocaleString();
+
+                const fav = isFavorite(data.secid, data.code);
+                const starIcon = fav ? '★' : '☆';
+                const starClass = fav ? 'star-btn star-active' : 'star-btn star-inactive';
+                const starTitle = fav ? '点击取消自选' : '点击加入自选';
+
+                const isActive = isQuoteActiveInCurrentSession(data);
+                const isNightWin = isNightSessionWindow();
+                const tradeTimeStr = data.tradeTime ? formatTradeTime(data.tradeTime) : '';
+                const sessionTagHtml = isNightWin
+                    ? (!isActive
+                        ? `<span class="tag-stale" title="该品种无夜盘或今晚未开盘 (最后成交: ${tradeTimeStr})">💤 日盘定格</span>`
+                        : `<span class="tag-night-active" title="夜盘活跃撮合中 (最后成交: ${tradeTimeStr})">🌙 夜盘</span>`)
+                    : '';
+
+                return `
+                <div class="card" id="card-${data.secid}" onclick="openChartModal('${data.secid}')">
+                    <div class="card-header">
+                        <div class="contract-info">
+                            <span class="contract-name">${data.name}</span>
+                            <span class="tag-physical">真实</span>
+                            ${sessionTagHtml}
+                            <span class="contract-code">${data.secid}</span>
+                        </div>
+                        
+                        <div class="header-pnl-group">
+                            <span class="change-badge ${badgeClass}" id="badge-${data.secid}">${sign}${data.changePercent.toFixed(2)}%</span>
+                            <button class="${starClass}" onclick="toggleFavorite('${data.secid}', '${data.code}', event)" title="${starTitle}">${starIcon}</button>
+                        </div>
+                    </div>
+                    
+                    <div class="hero-section">
+                        <span class="latest-price ${priceClass}" id="price-${data.secid}">${data.price > 0 ? data.price.toLocaleString(undefined, {minimumFractionDigits: data.price % 1 === 0 ? 0 : 2, maximumFractionDigits: 2}) : '--'}</span>
+                        <span class="price-diff-text ${priceClass}" id="diff-${data.secid}">${sign}${data.change.toFixed(1)} (振幅 ${data.low > 0 ? (((data.high - data.low)/data.low)*100).toFixed(2) + '%' : '--'})</span>
+                    </div>
+
+                    <div class="range-bar-wrapper">
+                        <div class="range-bar-labels">
+                            <span id="low-${data.secid}">低: ${data.low > 0 ? data.low : '--'}</span>
+                            <span id="high-${data.secid}">高: ${data.high > 0 ? data.high : '--'}</span>
+                        </div>
+                        <div class="range-track">
+                            <div class="range-progress" id="prog-${data.secid}" style="width: ${ratio}%;"></div>
+                            <div class="range-point" id="point-${data.secid}" style="left: ${ratio}%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="details-grid">
+                        <div class="detail-row"><span class="detail-label">昨结算</span><span class="detail-value">${data.prevSettle > 0 ? data.prevSettle : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">开盘价</span><span class="detail-value">${data.open > 0 ? data.open : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">成交量</span><span class="detail-value" id="vol-${data.secid}" style="color:#58a6ff; font-weight:bold;">${data.vol > 0 ? data.vol.toLocaleString() + '手' : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">成交额</span><span class="detail-value" id="amount-${data.secid}">${amountStr}</span></div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // 原地轻量数值刷新 (0% 页面抖动)
+        function updateDOMValuesInPlace() {
+            if (currentMode === 'abs') {
+                currentVarietyGroups.forEach(group => {
+                    const activeSecid = activeVarietyMonthMap[group.variety] || group.activeSecid || group.leadQuote.secid;
+                    const activeQuote = group.months.find(m => m.secid === activeSecid) || group.leadQuote;
+                    const card = document.getElementById(`card-variety-${group.variety}`);
+                    if (!card) return;
+
+                    const isUp = activeQuote.change > 0;
+                    const isDown = activeQuote.change < 0;
+                    const sign = isUp ? '+' : '';
+                    const priceClass = isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat';
+                    const badgeClass = isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge';
+
+                    const badgeEl = document.getElementById(`badge-${group.variety}`);
+                    if (badgeEl) {
+                        badgeEl.className = `change-badge ${badgeClass}`;
+                        badgeEl.textContent = `${sign}${activeQuote.changePercent.toFixed(2)}%`;
+                    }
+                    const priceEl = document.getElementById(`price-${group.variety}`);
+                    if (priceEl) {
+                        priceEl.className = `latest-price ${priceClass}`;
+                        priceEl.textContent = activeQuote.price > 0 ? activeQuote.price.toLocaleString(undefined, {minimumFractionDigits: activeQuote.price % 1 === 0 ? 0 : 2, maximumFractionDigits: 2}) : '--';
+                    }
+                    const diffEl = document.getElementById(`diff-${group.variety}`);
+                    if (diffEl) {
+                        diffEl.className = `price-diff-text ${priceClass}`;
+                        diffEl.textContent = `${sign}${activeQuote.change.toFixed(1)} (振幅 ${activeQuote.low > 0 ? (((activeQuote.high - activeQuote.low)/activeQuote.low)*100).toFixed(2) + '%' : '--'})`;
+                    }
+                    const volEl = document.getElementById(`vol-${group.variety}`);
+                    if (volEl) volEl.textContent = activeQuote.vol > 0 ? activeQuote.vol.toLocaleString() + '手' : '--';
+
+                    // 刷新各 pill 按钮上的涨跌幅数值
+                    group.months.forEach(m => {
+                        const pill = card.querySelector(`[data-pill-secid="${m.secid}"]`);
+                        if (pill) {
+                            const mUp = m.changePercent > 0;
+                            const mDown = m.changePercent < 0;
+                            const mSign = mUp ? '+' : '';
+                            const pCls = mUp ? 'pill-up' : mDown ? 'pill-down' : '';
+                            pill.className = `month-pill ${m.secid === activeQuote.secid ? 'active' : ''} ${m.isLead ? 'is-lead' : ''} ${pCls}`;
+                            pill.textContent = `${m.monthCode} ${mSign}${m.changePercent.toFixed(1)}%${m.isLead ? ' 👑' : ''}`;
+                        }
+                    });
+                });
+            } else {
+                focusQuotes.forEach(data => {
+                    const isUp = data.change > 0;
+                    const isDown = data.change < 0;
+                    const sign = isUp ? '+' : '';
+                    const priceClass = isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat';
+                    const badgeClass = isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge';
+
+                    const badgeEl = document.getElementById(`badge-${data.secid}`);
+                    const priceEl = document.getElementById(`price-${data.secid}`);
+                    const diffEl = document.getElementById(`diff-${data.secid}`);
+                    const volEl = document.getElementById(`vol-${data.secid}`);
+                    const amountEl = document.getElementById(`amount-${data.secid}`);
+
+                    if (badgeEl) {
+                        badgeEl.className = `change-badge ${badgeClass}`;
+                        badgeEl.textContent = `${sign}${data.changePercent.toFixed(2)}%`;
+                    }
+                    if (priceEl) {
+                        priceEl.className = `latest-price ${priceClass}`;
+                        priceEl.textContent = data.price > 0 ? data.price.toLocaleString(undefined, {minimumFractionDigits: data.price % 1 === 0 ? 0 : 2, maximumFractionDigits: 2}) : '--';
+                    }
+                    if (diffEl) {
+                        diffEl.className = `price-diff-text ${priceClass}`;
+                        diffEl.textContent = `${sign}${data.change.toFixed(1)} (振幅 ${data.low > 0 ? (((data.high - data.low)/data.low)*100).toFixed(2) + '%' : '--'})`;
+                    }
+                    if (volEl) volEl.textContent = data.vol > 0 ? data.vol.toLocaleString() + '手' : '--';
+                    if (amountEl) {
+                        let amountStr = '--';
+                        if (data.amount >= 100000000) amountStr = (data.amount / 100000000).toFixed(2) + ' 亿';
+                        else if (data.amount >= 10000) amountStr = (data.amount / 10000).toFixed(1) + ' 万';
+                        else if (data.amount > 0) amountStr = data.amount.toLocaleString();
+                        amountEl.textContent = amountStr;
+                    }
+                });
+            }
+        }
+
+        // 精确判断是否在自选列表
+        function isFavorite(secid, code) {
+            const lowSec = secid.toLowerCase();
+            const lowCode = code.toLowerCase();
+            return customWatchlist.some(c => {
+                const res = resolveSecId(c);
+                const targetSec = res ? res.secid.toLowerCase() : c.toLowerCase();
+                const targetSym = res ? res.symbol.toLowerCase() : c.toLowerCase();
+                return targetSec === lowSec || targetSym === lowCode || c.toLowerCase() === lowCode;
+            });
+        }
+
+        function toggleFavorite(secid, code, e) {
+            if (e) e.stopPropagation();
+            if (isFavorite(secid, code)) {
+                const lowSec = secid.toLowerCase();
+                const lowCode = code.toLowerCase();
+                customWatchlist = customWatchlist.filter(c => {
+                    const res = resolveSecId(c);
+                    const targetSec = res ? res.secid.toLowerCase() : c.toLowerCase();
+                    const targetSym = res ? res.symbol.toLowerCase() : c.toLowerCase();
+                    return !(targetSec === lowSec || targetSym === lowCode || c.toLowerCase() === lowCode);
+                });
+            } else {
+                customWatchlist.unshift(code);
+            }
+            saveWatchlist();
+            filterAndRenderFocusPool();
+        }
+
+        // ==================== 第三步：K 线与分时图按需点播 (新浪期货专业高精数据引擎) ====================
+        function getSinaFuturesSymbol(secid, code) {
+            let raw = '';
+            if (code) raw = code;
+            else if (secid && secid.includes('.')) raw = secid.split('.')[1];
+            else raw = secid || '';
+
+            raw = raw.toUpperCase().trim();
+            // 郑商所等 3 位数字格式标准化 (如 MA610 -> MA2610, OI603 -> OI2603, SA505 -> SA2505)
+            const m3 = raw.match(/^([A-Z]+)(\d)(\d{2})$/);
+            if (m3) {
+                const variety = m3[1];
+                const yearDigit = parseInt(m3[2]);
+                const monthStr = m3[3];
+                return `${variety}2${yearDigit}${monthStr}`;
+            }
+            return raw;
+        }
+
+        // 统一超稳定 JSONP 加载器 (带 Object.defineProperty 零延迟拦截)
+        function loadSinaFuturesJsonp(url) {
+            return new Promise((resolve) => {
+                const cbName = 'sina_cb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+                const script = document.createElement('script');
+                const reqUrl = url.replace('CALLBACK_VAR', cbName);
+                let receivedData = null;
+                let isHandled = false;
+
+                try {
+                    Object.defineProperty(window, cbName, {
+                        set: function(val) { receivedData = val; },
+                        get: function() { return receivedData; },
+                        configurable: true
+                    });
+                } catch(e) {}
+
+                const timer = setTimeout(() => {
+                    done(receivedData);
+                }, 4000);
+
+                function done(res) {
+                    if (isHandled) return;
+                    isHandled = true;
+                    if (timer) clearTimeout(timer);
+                    try { delete window[cbName]; } catch(e) {}
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                    resolve(Array.isArray(res) ? res : null);
+                }
+
+                script.onload = function() {
+                    done(receivedData || window[cbName]);
+                };
+
+                script.onerror = function() {
+                    done(null);
+                };
+
+                script.src = reqUrl;
+                document.head.appendChild(script);
+            });
+        }
+
+        // ==================== PWA 原生路由守卫与手势拦截 (History Guard) ====================
+        let pwaToastTimer = null;
+        let _isPwaGuardInitialized = false;
+        let lastUserTouchTime = 0;
+
+        function showPwaToast(msg = '请从屏幕底部上滑退出应用') {
+            let toast = document.getElementById('pwa-guard-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'pwa-guard-toast';
+                toast.className = 'pwa-guard-toast';
+                (document.body || document.documentElement).appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.classList.remove('visible');
+            void toast.offsetWidth; // 触发 reflow，确保多次连续拦截时微动效平滑刷新
+            toast.classList.add('visible');
+
+            if (pwaToastTimer) clearTimeout(pwaToastTimer);
+            pwaToastTimer = setTimeout(() => {
+                if (toast) toast.classList.remove('visible');
+            }, 2000);
+        }
+
+        function pushPwaGuardState() {
+            try {
+                window.history.pushState({ pwaGuard: true, ts: Date.now() }, '', window.location.href);
+            } catch (e) {
+                // 部分私密模式或极端沙盒环境做静默降级处理
+            }
+        }
+
+        // 双层缓冲加固：确立至少 2 层历史栈深度，彻底防止连续快速侧滑击穿见底
+        function reinforceGuardBuffer() {
+            pushPwaGuardState();
+            pushPwaGuardState();
+        }
+
+        function initPwaHistoryGuard() {
+            if (_isPwaGuardInitialized) return;
+            _isPwaGuardInitialized = true;
+
+            // 1. 初始化时压入双重守卫缓冲
+            reinforceGuardBuffer();
+
+            // 2. 用户任意手势交互时（享有 Transient User Activation 用户激活态），重新加固守卫栈
+            //    这从根源上消除 Chromium History Manipulation Intervention 判定
+            //    防止浏览器误判“无交互脚本劫持”而跳过 pushState 退出应用
+            const onUserTouch = () => {
+                const now = Date.now();
+                if (now - lastUserTouchTime > 2500) {
+                    lastUserTouchTime = now;
+                    pushPwaGuardState();
+                }
+            };
+            window.addEventListener('touchstart', onUserTouch, { passive: true });
+            window.addEventListener('pointerdown', onUserTouch, { passive: true });
+
+            // 3. 监听系统/手势后退 (Android 全面屏边缘侧滑返回、物理/虚拟 Back 键)
+            window.addEventListener('popstate', (e) => {
+                if (activeModalSecId) {
+                    // 若当前处于二级图表面板：关闭二级面板回到主看板
+                    closeChartModal(true);
+                    // 补充双层守卫缓冲，确保回到主看板后历史栈深度饱满
+                    reinforceGuardBuffer();
+                } else {
+                    // 若当前已处于一级主页面：立即连续补栈，原地拦截杜绝退出应用
+                    reinforceGuardBuffer();
+                    showPwaToast('请从屏幕底部上滑退出应用');
+                }
+            });
+
+            // 4. 切后台重回应用（前台唤醒）或页面显示时再次补强
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) reinforceGuardBuffer();
+            });
+            window.addEventListener('pageshow', () => {
+                reinforceGuardBuffer();
+            });
+        }
+
+        function openChartModal(secid, isNavigating = false) {
+            const quote = allPhysicalQuotes.find(q => q.secid === secid) || focusQuotes.find(q => q.secid === secid);
+            if (!quote) return;
+
+            activeModalSecId = secid;
+            activeModalQuote = quote;
+
+            // 弹窗打开期间：锁定底层主页面滚动，暂停后台轮询，独享极致流畅
+            document.body.style.overflow = 'hidden';
+            stopAllTimers();
+
+            // 确保 PWA 路由守卫栈处于就绪状态
+            initPwaHistoryGuard();
+
+            document.getElementById('modal-name').textContent = quote.name;
+            document.getElementById('modal-code').textContent = quote.secid;
+
+            const sessionTagEl = document.getElementById('modal-tag-session');
+            if (sessionTagEl) {
+                const isNightWin = isNightSessionWindow();
+                const isActive = isQuoteActiveInCurrentSession(quote);
+                const tradeTimeStr = quote.tradeTime ? formatTradeTime(quote.tradeTime) : '';
+                if (isNightWin) {
+                    sessionTagEl.innerHTML = !isActive
+                        ? `<span class="tag-stale" title="该品种无夜盘或今晚未开盘 (最后成交: ${tradeTimeStr})">💤 日盘定格 (${tradeTimeStr})</span>`
+                        : `<span class="tag-night-active" title="夜盘活跃撮合中 (最后成交: ${tradeTimeStr})">🌙 夜盘活跃 (${tradeTimeStr})</span>`;
+                    sessionTagEl.style.display = 'inline-block';
+                } else {
+                    sessionTagEl.innerHTML = '';
+                    sessionTagEl.style.display = 'none';
+                }
+            }
+            
+            const isUp = quote.change > 0;
+            const isDown = quote.change < 0;
+            const sign = isUp ? '+' : '';
+            const priceEl = document.getElementById('modal-price');
+            const badgeEl = document.getElementById('modal-badge');
+
+            priceEl.className = 'modal-price-hero ' + (isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat');
+            priceEl.textContent = quote.price > 0 ? quote.price : '--';
+
+            badgeEl.className = 'change-badge ' + (isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge');
+            badgeEl.textContent = `${sign}${quote.change.toFixed(1)} (${sign}${quote.changePercent.toFixed(2)}%)`;
+
+            updateModalSeqBadge();
+
+            document.getElementById('chart-modal').style.display = 'flex';
+
+            bindChartTouch(document.getElementById('pro-chart-canvas'));
+            renderProChart();
+        }
+
+        function closeChartModal(fromPopState = false) {
+            document.getElementById('chart-modal').style.display = 'none';
+            document.body.style.overflow = '';
+            activeModalSecId = null;
+            activeRenderData = null;
+            cachedFullKlines = [];
+            startAllTimers();
+        }
+
+        function closeModalOnBackdrop(e) {
+            if (e.target.id === 'chart-modal') closeChartModal();
+        }
+
+        function updateModalSeqBadge() {
+            const badge = document.getElementById('modal-seq-badge');
+            if (!badge || !focusQuotes || focusQuotes.length === 0) return;
+            const idx = focusQuotes.findIndex(q => q.secid === activeModalSecId);
+            badge.textContent = idx >= 0 ? `${idx + 1} / ${focusQuotes.length}` : `-- / ${focusQuotes.length}`;
+        }
+
+        // 切换上一个 / 下一个合约 (按当前列表排序，平滑切合约不污染历史栈)
+        function navContract(delta) {
+            if (!focusQuotes || focusQuotes.length === 0) return;
+            const idx = focusQuotes.findIndex(q => q.secid === activeModalSecId);
+            let nextIdx = 0;
+            if (idx >= 0) {
+                nextIdx = (idx + delta + focusQuotes.length) % focusQuotes.length;
+            } else {
+                nextIdx = 0;
+            }
+            openChartModal(focusQuotes[nextIdx].secid, true);
+        }
+
+        // 弹窗内滚轮事件拦截与智能空间分发 (100% 阻止底层主页面滚动)
+        // 智能感应设计：
+        // 1. 鼠标在 K 线图画布范围内部滚动：对 K 线进行缩放 (放大/缩小视口)
+        // 2. 鼠标在 K 线图画布外部区域 (顶部标题栏、导航栏、图例条、背景间隙等) 滚动：上下无缝切换合约
+        function handleModalWheel(e) {
+            if (!activeModalSecId) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const canvas = document.getElementById('pro-chart-canvas');
+            const wrapper = document.getElementById('chart-wrapper');
+            // 判断滚轮是否处于 K 线图容器内部
+            const isInsideChart = (e.target === canvas || (wrapper && wrapper.contains(e.target)));
+
+            if (isInsideChart && currentChartType !== 'trend') {
+                // 图表内滚轮：缩放 K 线大小 (本地 0ms 高性能重绘)
+                if (!cachedFullKlines || cachedFullKlines.length === 0) return;
+                
+                const delta = e.deltaY < 0 ? -10 : 10;
+                const minBars = 20;
+                const maxBars = cachedFullKlines.length;
+                
+                let nextCount = currentVisibleCount + delta;
+                nextCount = Math.max(minBars, Math.min(maxBars, nextCount));
+                
+                if (nextCount !== currentVisibleCount) {
+                    currentVisibleCount = nextCount;
+                    redrawKlineCanvasOnly();
+                }
+            } else {
+                // 图表外滚轮 (或分时图下)：上下切换合约 (加入 180ms 平滑防抖)
+                const now = performance.now();
+                if (now - lastWheelSwitchTime < 180) return;
+                lastWheelSwitchTime = now;
+                
+                if (e.deltaY < 0) navContract(-1); // 向上滚：上一个合约
+                else if (e.deltaY > 0) navContract(1);  // 向下滚：下一个合约
+            }
+        }
+
+        // 键盘快捷键 (Esc关闭, ↑/↓/PgUp/PgDn切合约, +-缩放)
+        function handleModalKeyDown(e) {
+            if (!activeModalSecId) return;
+            if (e.key === 'Escape') {
+                closeChartModal();
+            } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+                e.preventDefault();
+                navContract(-1);
+            } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+                e.preventDefault();
+                navContract(1);
+            } else if (e.key === '+' || e.key === '=' || e.key === 'ArrowLeft') {
+                if (cachedFullKlines && cachedFullKlines.length > 0 && currentChartType !== 'trend') {
+                    currentVisibleCount = Math.max(20, currentVisibleCount - 10);
+                    redrawKlineCanvasOnly();
+                }
+            } else if (e.key === '-' || e.key === '_' || e.key === 'ArrowRight') {
+                if (cachedFullKlines && cachedFullKlines.length > 0 && currentChartType !== 'trend') {
+                    currentVisibleCount = Math.min(cachedFullKlines.length, currentVisibleCount + 10);
+                    redrawKlineCanvasOnly();
+                }
+            }
+        }
+
+        function switchChartType(type) {
+            currentChartType = type;
+            document.querySelectorAll('.chart-tab-btn').forEach(b => b.classList.remove('active'));
+            const tabId = type === 'trend' ? 'chart-tab-trend' :
+                          type === '5' ? 'chart-tab-k5' :
+                          type === '15' ? 'chart-tab-k15' :
+                          type === '60' ? 'chart-tab-k60' : 'chart-tab-kday';
+            const btn = document.getElementById(tabId);
+            if (btn) btn.classList.add('active');
+
+            renderProChart();
+        }
+
+        let activeRenderData = null;
+
+        // 渲染专业图表 (带防卡死与毫秒级进度条反馈)
+        // ===== 移动端图表适配：根据画布宽度返回线宽 / 字号的制表 =====
+        function getChartMetrics(w) {
+            const mobile = w <= 600;
+            return {
+                mobile,
+                lwAxis: mobile ? 1 : 1,          // 网格 / 分隔线
+                lwWick: mobile ? 1.4 : 1.2,      // K 线影线与边框 (纤细精致)
+                lwMA:   mobile ? 2.0 : 1.4,      // 均线
+                lwDivider: mobile ? 1.8 : 1.4,   // 最新时段分割线
+                barWMin: mobile ? 3 : 2,         // 蜡烛最小宽度
+                barWMax: mobile ? 14 : 16,
+                barWRatio: mobile ? 0.62 : 0.68, // 蜡烛宽度占比：留出近 40% 间隙呼吸空间，杜绝拥挤
+                timeAxisH: mobile ? 26 : 22
+            };
+        }
+
+        // 触控 / 鼠标 共用：根据画布 X 坐标显示对应 K 柱详情
+        function showBarInfoAtX(x) {
+            if (!activeRenderData || currentChartType === 'trend') return;
+            const { klines, step } = activeRenderData;
+            const idx = Math.floor(x / step);
+            if (idx < 0 || idx >= klines.length) return;
+            const k = klines[idx];
+            const isUp = k.close >= k.open;
+            const infoEl = document.getElementById('chart-status-text');
+            if (infoEl) {
+                infoEl.innerHTML = `
+                    <span>${k.date}</span> |
+                    <span>开: ${k.open}</span>
+                    <span>高: ${k.high}</span>
+                    <span>低: ${k.low}</span>
+                    <span style="color:${isUp ? '#f85149' : '#2ea043'}; font-weight:bold;">收: ${k.close}</span> |
+                    <span>量: ${k.vol}手</span>
+                `;
+            }
+        }
+
+        // 触控手势：双指捏合缩放 K 线、单指拖动平移、单指上下滑切换合约（全屏阻止页面穿透滚动）
+        let touchState = null;
+        let touchBound = false;
+        function bindChartTouch(canvas) {
+            if (touchBound || !canvas) return;
+            touchBound = true;
+
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    if (currentChartType === 'trend' || !cachedFullKlines || cachedFullKlines.length === 0) return;
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    touchState = { mode: 'pinch', startDist: Math.hypot(dx, dy), startCount: currentVisibleCount };
+                } else if (e.touches.length === 1) {
+                    touchState = {
+                        mode: 'pan',
+                        startX: e.touches[0].clientX,
+                        startY: e.touches[0].clientY,
+                        initialViewStart: chartViewStart,
+                        lastX: e.touches[0].clientX,
+                        lastY: e.touches[0].clientY,
+                        swipedContract: false,
+                        moved: false
+                    };
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (!touchState) return;
+                e.preventDefault(); // 阻止手机浏览器默认滚动/下拉刷新
+
+                if (touchState.mode === 'pinch' && e.touches.length === 2) {
+                    if (currentChartType === 'trend' || !cachedFullKlines || cachedFullKlines.length === 0) return;
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    const dist = Math.hypot(dx, dy);
+                    if (touchState.startDist > 0) {
+                        const ratio = dist / touchState.startDist;
+                        const minBars = 20, maxBars = cachedFullKlines.length;
+                        let next = Math.round(touchState.startCount / ratio);
+                        next = Math.max(minBars, Math.min(maxBars, next));
+                        if (next !== currentVisibleCount) { currentVisibleCount = next; redrawKlineCanvasOnly(); }
+                    }
+                } else if (touchState.mode === 'pan' && e.touches.length === 1) {
+                    const x = e.touches[0].clientX;
+                    const y = e.touches[0].clientY;
+                    const dx = x - touchState.startX;
+                    const dy = y - touchState.startY;
+
+                    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) touchState.moved = true;
+
+                    // 1. 垂直滑动手势：单指上滑 / 下滑直接切换上一合约 / 下一合约
+                    if (!touchState.swipedContract && Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx) * 1.25) {
+                        touchState.swipedContract = true;
+                        if (dy < -42) {
+                            // 手指上滑 -> 切换到下一个合约
+                            navContract(1);
+                        } else if (dy > 42) {
+                            // 手指下滑 -> 切换到上一个合约
+                            navContract(-1);
+                        }
+                        return;
+                    }
+
+                    // 2. 水平平移手势：K 线图左右拖动查看历史时间轴
+                    // 自然跟手物理特性：手指右滑(dx > 0)把左侧历史拉入视口，图表向右平移；手指左滑(dx < 0)拉出更新行情
+                    if (!touchState.swipedContract && currentChartType !== 'trend' && cachedFullKlines && cachedFullKlines.length > 0) {
+                        const stepPx = (canvas.clientWidth / currentVisibleCount) || 6;
+                        const barDelta = Math.round(dx / stepPx);
+                        const total = cachedFullKlines.length;
+                        let nv = touchState.initialViewStart + barDelta;
+                        nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
+                        if (nv !== chartViewStart) {
+                            chartViewStart = nv;
+                            redrawKlineCanvasOnly();
+                        }
+                    } else if (!touchState.swipedContract && currentChartType === 'trend' && activeRenderData) {
+                        // 分时图下水平拖动：跟随手指显示对应时段报价明细，决不退出弹窗
+                        const rect = canvas.getBoundingClientRect();
+                        showBarInfoAtX(x - rect.left);
+                    }
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', (e) => {
+                if (touchState && touchState.mode === 'pan' && !touchState.moved && !touchState.swipedContract && e.changedTouches.length === 1) {
+                    const rect = canvas.getBoundingClientRect();
+                    showBarInfoAtX(e.changedTouches[0].clientX - rect.left);
+                }
+                // 双指缩放 pinch 状态下，只要任意一指松开，即表示缩放手势彻底结束，立即重置触控状态，严禁转为杂乱的单指滑动
+                if (touchState && touchState.mode === 'pinch' && e.touches.length < 2) {
+                    touchState = null;
+                    return;
+                }
+                if (e.touches.length === 0) {
+                    touchState = null;
+                }
+            });
+
+            canvas.addEventListener('touchcancel', () => {
+                touchState = null;
+            });
+        }
+
+        async function renderProChart() {
+            if (!activeModalSecId) return;
+
+            const myVersion = ++chartReqVersion;
+            const loadingBar = document.getElementById('modal-loading-bar');
+            const statusEl = document.getElementById('chart-status-text');
+            
+            // 1. 触发微光加载条
+            if (loadingBar) loadingBar.className = 'modal-loading-bar active';
+            const startTime = performance.now();
+
+            const canvas = document.getElementById('pro-chart-canvas');
+            const container = document.getElementById('chart-wrapper');
+            const dpr = window.devicePixelRatio || 1;
+            const w = (container && container.clientWidth) ? container.clientWidth : 1040;
+            const h = (container && container.clientHeight) ? container.clientHeight : 520;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, w, h);
+
+            try {
+                if (currentChartType === 'trend') {
+                    if (statusEl) statusEl.innerHTML = `⏳ 正在拉取 ${activeModalQuote.name} 当日分时数据...`;
+                    updateChartLegendText();
+                    const count = await drawTrendChart(ctx, w, h);
+                    const elapsed = Math.round(performance.now() - startTime);
+                    if (statusEl) {
+                        statusEl.innerHTML = count > 0 ? 
+                            `✅ 已成功加载 ${count} 个分时数据点 (耗时 ${elapsed}ms)` : 
+                            `ℹ️ 暂无分时数据或当前非交易时段 (耗时 ${elapsed}ms)`;
+                    }
+                } else {
+                    const isDay = (currentChartType === '101');
+                    const mobile = (w <= 600);
+                    const reqBars = isDay ? (mobile ? 45 : 70) : (mobile ? 60 : 100);
+                    const kName = currentChartType === '5' ? '5分钟K' : 
+                                  currentChartType === '15' ? '15分钟K' : 
+                                  currentChartType === '60' ? '60分钟K' : '日K线';
+
+                    if (statusEl) statusEl.innerHTML = `⏳ 正在向历史服务器请求 ${reqBars} 根 ${kName} 数据...`;
+                    updateChartLegendText();
+
+                    const count = await drawKlineChart(ctx, w, h, currentChartType, reqBars);
+                    const elapsed = Math.round(performance.now() - startTime);
+                    if (statusEl) {
+                        statusEl.innerHTML = count > 0 ? 
+                            `✅ 已成功加载 ${cachedFullKlines.length} 根真实 K 柱 (耗时 ${elapsed}ms)` : 
+                            `ℹ️ 暂无历史 K 柱数据或该合约已交割 (耗时 ${elapsed}ms)`;
+                    }
+                }
+            } catch (err) {
+                console.error('Render pro chart:', err);
+                if (statusEl) statusEl.innerHTML = `ℹ️ 图表数据已就绪`;
+            } finally {
+                if (loadingBar) {
+                    loadingBar.className = 'modal-loading-bar done';
+                    setTimeout(() => {
+                        if (loadingBar) loadingBar.className = 'modal-loading-bar';
+                    }, 300);
+                }
+            }
+        }
+
+        // 绘制当日分时高清图 (新浪高精通道，闭市自动回退当日 5 分钟线)
+        async function drawTrendChart(ctx, w, h) {
+            let rawList = [];
+            const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
+
+            try {
+                // 1. 尝试直接获取新浪当日分时数据
+                const minUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getMinLine?symbol=${symbol}`;
+                const minArr = await loadSinaFuturesJsonp(minUrl);
+
+                if (minArr && Array.isArray(minArr) && minArr.length > 0) {
+                    rawList = minArr.map(item => ({
+                        time: item[0] || '',
+                        price: parseFloat(item[1]) || 0,
+                        vwap: parseFloat(item[2]) || parseFloat(item[1]) || 0,
+                        vol: parseInt(item[3]) || 0
+                    })).filter(d => d.price > 0);
+                }
+
+                // 2. 若当日分时为空（如休市时），从 5 分钟 K 线中提取最新交易日的分时走势
+                if (rawList.length === 0) {
+                    const min5Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=5`;
+                    const min5Arr = await loadSinaFuturesJsonp(min5Url);
+                    if (min5Arr && min5Arr.length > 0) {
+                        const latestDate = min5Arr[min5Arr.length - 1].d.split(' ')[0];
+                        const dayBars = min5Arr.filter(b => b.d.split(' ')[0] === latestDate);
+                        rawList = dayBars.map(b => ({
+                            time: b.d.split(' ')[1] || b.d,
+                            price: parseFloat(b.c) || 0,
+                            vwap: (parseFloat(b.h) + parseFloat(b.l) + parseFloat(b.c)) / 3,
+                            vol: parseInt(b.v) || 0
+                        })).filter(d => d.price > 0);
+                    }
+                }
+            } catch(e) {
+                console.error('Draw trend error:', e);
+            }
+
+            if (!rawList || rawList.length === 0) {
+                ctx.fillStyle = '#8b9db7';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('暂无分时数据或休市中', w / 2, h / 2);
+                return 0;
+            }
+
+            const prePrice = activeModalQuote.prevSettle || rawList[0].price;
+            const prices = rawList.map(d => d.price);
+            const maxP = Math.max(...prices, prePrice);
+            const minP = Math.min(...prices, prePrice);
+            const diff = Math.max(Math.abs(maxP - prePrice), Math.abs(prePrice - minP)) || 1;
+            const topP = prePrice + diff * 1.05;
+            const botP = prePrice - diff * 1.05;
+
+            const mainH = h * 0.70;
+            const volH = h * 0.22;
+
+            // 网格
+            ctx.strokeStyle = '#1a2332';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = (mainH / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+
+                const curP = topP - ((topP - botP) / 4) * i;
+                const changeRatio = prePrice > 0 ? ((curP - prePrice) / prePrice) * 100 : 0;
+                ctx.fillStyle = changeRatio > 0.01 ? '#f85149' : changeRatio < -0.01 ? '#2ea043' : '#8b9db7';
+                ctx.font = '10px var(--font-mono)';
+                ctx.textAlign = 'right';
+                ctx.fillText(`${curP.toFixed(1)} (${changeRatio >= 0 ? '+' : ''}${changeRatio.toFixed(2)}%)`, w - 8, y - 4);
+            }
+
+            // 昨结中轴虚线
+            const zeroY = mainH - ((prePrice - botP) / (topP - botP)) * mainH;
+            ctx.strokeStyle = '#3e4c63';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(0, zeroY);
+            ctx.lineTo(w, zeroY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 均价黄线 (VWAP)
+            ctx.beginPath();
+            ctx.strokeStyle = '#f1c40f';
+            ctx.lineWidth = 1.3;
+            rawList.forEach((d, idx) => {
+                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+                const vwapVal = d.vwap > 0 ? d.vwap : d.price;
+                const y = mainH - ((vwapVal - botP) / (topP - botP)) * mainH;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // 价格白线
+            ctx.beginPath();
+            ctx.strokeStyle = '#f0f6fc';
+            ctx.lineWidth = 1.8;
+            rawList.forEach((d, idx) => {
+                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+                const y = mainH - ((d.price - botP) / (topP - botP)) * mainH;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // 成交量副图
+            const maxVol = Math.max(...rawList.map(d => d.vol)) || 1;
+            const barW = Math.max(1, (w / rawList.length) - 1);
+            rawList.forEach((d, idx) => {
+                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+                const bH = (d.vol / maxVol) * volH;
+                ctx.fillStyle = d.price >= prePrice ? '#f85149' : '#2ea043';
+                ctx.fillRect(x - barW/2, h - bH, barW, bH);
+            });
+
+            return rawList.length;
+        }
+
+        // 绘制当日分时高清图 (新浪高精通道，闭市自动回退当日 5 分钟线)
+        async function drawTrendChart(ctx, w, h) {
+            let rawList = [];
+            const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
+
+            try {
+                // 1. 尝试直接获取新浪当日分时数据
+                const minUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getMinLine?symbol=${symbol}`;
+                const minArr = await loadSinaFuturesJsonp(minUrl);
+
+                if (minArr && Array.isArray(minArr) && minArr.length > 0) {
+                    rawList = minArr.map(item => ({
+                        time: item[0] || '',
+                        price: parseFloat(item[1]) || 0,
+                        vwap: parseFloat(item[2]) || parseFloat(item[1]) || 0,
+                        vol: parseInt(item[3]) || 0
+                    })).filter(d => d.price > 0);
+                }
+
+                // 2. 若当日分时为空（如休市时），从 5 分钟 K 线中提取最新交易日的分时走势
+                if (rawList.length === 0) {
+                    const min5Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=5`;
+                    const min5Arr = await loadSinaFuturesJsonp(min5Url);
+                    if (min5Arr && min5Arr.length > 0) {
+                        const latestDate = min5Arr[min5Arr.length - 1].d.split(' ')[0];
+                        const dayBars = min5Arr.filter(b => b.d.split(' ')[0] === latestDate);
+                        rawList = dayBars.map(b => ({
+                            time: b.d.split(' ')[1] || b.d,
+                            price: parseFloat(b.c) || 0,
+                            vwap: (parseFloat(b.h) + parseFloat(b.l) + parseFloat(b.c)) / 3,
+                            vol: parseInt(b.v) || 0
+                        })).filter(d => d.price > 0);
+                    }
+                }
+            } catch(e) {
+                console.error('Draw trend error:', e);
+            }
+
+            if (!rawList || rawList.length === 0) {
+                ctx.fillStyle = '#8b9db7';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('暂无分时数据或休市中', w / 2, h / 2);
+                return 0;
+            }
+
+            const prePrice = activeModalQuote.prevSettle || rawList[0].price;
+            const prices = rawList.map(d => d.price);
+            const maxP = Math.max(...prices, prePrice);
+            const minP = Math.min(...prices, prePrice);
+            const diff = Math.max(Math.abs(maxP - prePrice), Math.abs(prePrice - minP)) || 1;
+            const topP = prePrice + diff * 1.05;
+            const botP = prePrice - diff * 1.05;
+
+            // 移动端线宽 / 字体制表
+            const m = getChartMetrics(w);
+            const FONT = (m.mobile ? '12px' : '10px') + ' monospace';
+
+            // 独立时间轴布局
+            const timeAxisH = m.timeAxisH;
+            const chartAvailableH = h - timeAxisH;
+            const mainH = chartAvailableH * 0.72;
+            const volTop = mainH + 10;
+            const volH = chartAvailableH - volTop;
+            const volBottom = chartAvailableH;
+
+            // 独立时间轴底色与隔离线
+            ctx.fillStyle = '#080c12';
+            ctx.fillRect(0, chartAvailableH, w, timeAxisH);
+            ctx.strokeStyle = '#1a2738';
+            ctx.lineWidth = m.lwAxis;
+            ctx.beginPath();
+            ctx.moveTo(0, chartAvailableH);
+            ctx.lineTo(w, chartAvailableH);
+            ctx.stroke();
+
+            // 主图网格与价格刻度
+            ctx.strokeStyle = '#1a2332';
+            ctx.lineWidth = m.lwAxis;
+            for (let i = 0; i <= 4; i++) {
+                const y = (mainH / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+
+                const curP = topP - ((topP - botP) / 4) * i;
+                const changeRatio = prePrice > 0 ? ((curP - prePrice) / prePrice) * 100 : 0;
+                ctx.fillStyle = changeRatio > 0.01 ? '#f85149' : changeRatio < -0.01 ? '#2ea043' : '#8b9db7';
+                ctx.font = FONT;
+                ctx.textAlign = 'right';
+                ctx.fillText(`${curP.toFixed(1)} (${changeRatio >= 0 ? '+' : ''}${changeRatio.toFixed(2)}%)`, w - 8, y - 4);
+            }
+
+            // 昨结中轴虚线
+            const zeroY = mainH - ((prePrice - botP) / (topP - botP)) * mainH;
+            ctx.strokeStyle = '#3e4c63';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(0, zeroY);
+            ctx.lineTo(w, zeroY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 均价黄线 (VWAP)
+            ctx.beginPath();
+            ctx.strokeStyle = '#f1c40f';
+            ctx.lineWidth = m.lwMA;
+            rawList.forEach((d, idx) => {
+                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+                const vwapVal = d.vwap > 0 ? d.vwap : d.price;
+                const y = mainH - ((vwapVal - botP) / (topP - botP)) * mainH;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // 价格白线
+            ctx.beginPath();
+            ctx.strokeStyle = '#f0f6fc';
+            ctx.lineWidth = m.mobile ? 2.4 : 1.8;
+            rawList.forEach((d, idx) => {
+                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+                const y = mainH - ((d.price - botP) / (topP - botP)) * mainH;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // 成交量副图 (底端止于 volBottom，绝不侵入时间轴)
+            const maxVol = Math.max(...rawList.map(d => d.vol)) || 1;
+            const barW = Math.max(m.mobile ? 1.5 : 1, (w / rawList.length) - 1);
+            rawList.forEach((d, idx) => {
+                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+                const bH = (d.vol / maxVol) * volH;
+                ctx.fillStyle = d.price >= prePrice ? '#f85149' : '#2ea043';
+                ctx.fillRect(x - barW/2, volBottom - bH, barW, bH);
+            });
+
+            // 时间轴文字 (清晰横排)
+            if (rawList.length > 0) {
+                ctx.fillStyle = '#8b9db7';
+                ctx.font = FONT;
+                ctx.textAlign = 'left';
+                ctx.fillText(rawList[0].time || '09:00', 8, chartAvailableH + 15);
+                ctx.textAlign = 'center';
+                const midIdx = Math.floor(rawList.length / 2);
+                ctx.fillText(rawList[midIdx].time || '11:30', w / 2, chartAvailableH + 15);
+                ctx.textAlign = 'right';
+                ctx.fillText(rawList[rawList.length - 1].time || '15:00', w - 8, chartAvailableH + 15);
+            }
+
+            return rawList.length;
+        }
+
+        // 绘制多周期 K 线图 (新浪 1023 根真实多日历史数据库，初始化精准截取 150 根/80 根)
+        async function drawKlineChart(ctx, w, h, klt, reqLimit) {
+            const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
+            cachedFullKlines = [];
+
+            try {
+                let kUrl = '';
+                if (klt === '101') {
+                    kUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getDailyKLine?symbol=${symbol}`;
+                } else {
+                    kUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=${klt}`;
+                }
+
+                const rawArr = await loadSinaFuturesJsonp(kUrl);
+                if (rawArr && Array.isArray(rawArr) && rawArr.length > 0) {
+                    cachedFullKlines = rawArr.map(item => ({
+                        date: item.d || '',
+                        open: parseFloat(item.o) || 0,
+                        high: parseFloat(item.h) || 0,
+                        low: parseFloat(item.l) || 0,
+                        close: parseFloat(item.c) || 0,
+                        vol: parseInt(item.v) || 0
+                    })).filter(k => k.close > 0 && k.high >= k.low);
+                }
+            } catch(e) {
+                console.error('Draw Kline error:', e);
+            }
+
+            if (!cachedFullKlines || cachedFullKlines.length === 0) {
+                ctx.fillStyle = '#8b9db7';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('暂无该真实合约的 K 线数据', w / 2, h / 2);
+                return 0;
+            }
+
+            // 初始化当前视口展示根数
+            currentVisibleCount = Math.min(reqLimit, cachedFullKlines.length);
+            chartViewStart = 0;           // 新数据加载后重置平移位置
+            return redrawKlineCanvasOnly();
+        }
+
+        // 本地极速 0ms 重绘 K 线 (缩放、切帧不发网络请求)
+        function redrawKlineCanvasOnly() {
+            if (!activeModalSecId || currentChartType === 'trend' || !cachedFullKlines || cachedFullKlines.length === 0) return 0;
+
+            const canvas = document.getElementById('pro-chart-canvas');
+            const container = document.getElementById('chart-wrapper');
+            const dpr = window.devicePixelRatio || 1;
+            const w = (container && container.clientWidth) ? container.clientWidth : 1040;
+            const h = (container && container.clientHeight) ? container.clientHeight : 520;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, w, h);
+
+            // 截取当前视口可见的 K 线子集（支持触控平移 chartViewStart，强健容错防御 NaN）
+            const total = cachedFullKlines.length;
+            if (!Number.isFinite(chartViewStart) || chartViewStart < 0) chartViewStart = 0;
+            if (!Number.isFinite(currentVisibleCount) || currentVisibleCount < 10) currentVisibleCount = Math.min(60, total);
+            chartViewStart = Math.min(Math.max(0, total - currentVisibleCount), chartViewStart);
+
+            let _start = total - currentVisibleCount - chartViewStart;
+            let _end = _start + currentVisibleCount;
+            if (_end > total) { _end = total; _start = Math.max(0, _end - currentVisibleCount); }
+            if (_start < 0) _start = 0;
+            const visibleBars = cachedFullKlines.slice(_start, _end);
+            const count = visibleBars.length;
+            if (count === 0) return 0;
+
+            // 移动端线宽 / 字体制表：手机上把线加粗、字放大，避免看不清
+            const m = getChartMetrics(w);
+            const FONT = (m.mobile ? '12px' : '10px') + ' monospace';
+
+            // 计算均线 MA5, MA10, MA20
+            for (let i = 0; i < count; i++) {
+                visibleBars[i].ma5 = calcMA(visibleBars, i, 5);
+                visibleBars[i].ma10 = calcMA(visibleBars, i, 10);
+                visibleBars[i].ma20 = calcMA(visibleBars, i, 20);
+            }
+
+            const highs = visibleBars.map(k => k.high);
+            const lows = visibleBars.map(k => k.low);
+            const maxP = Math.max(...highs);
+            const minP = Math.min(...lows);
+            const pad = (maxP - minP) * 0.08 || 1;
+            const topP = maxP + pad;
+            const botP = minP - pad;
+
+            // 独立时间轴布局 (彻底隔离成交量副图与时间轴)
+            const timeAxisH = m.timeAxisH;
+            const chartAvailableH = h - timeAxisH;
+            const mainH = chartAvailableH * 0.72;
+            const volTop = mainH + 12;
+            const volH = chartAvailableH - volTop;
+            const volBottom = chartAvailableH;
+
+            const step = w / count;
+            const barWidth = Math.max(m.barWMin, Math.min(m.barWMax, step * m.barWRatio));
+
+            // 绘制独立时间轴底色与顶部分隔线 (彻底隔绝红绿成交量柱)
+            ctx.fillStyle = '#080c12';
+            ctx.fillRect(0, chartAvailableH, w, timeAxisH);
+            ctx.strokeStyle = '#1a2738';
+            ctx.lineWidth = m.lwAxis;
+            ctx.beginPath();
+            ctx.moveTo(0, chartAvailableH);
+            ctx.lineTo(w, chartAvailableH);
+            ctx.stroke();
+
+            // 网格线与价格刻度
+            ctx.strokeStyle = '#1a2332';
+            ctx.lineWidth = m.lwAxis;
+            for (let i = 0; i <= 4; i++) {
+                const y = (mainH / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+
+                const curP = topP - ((topP - botP) / 4) * i;
+                ctx.fillStyle = '#8b9db7';
+                ctx.font = FONT;
+                ctx.textAlign = 'right';
+                ctx.fillText(curP.toFixed(1), w - 8, y - 4);
+            }
+
+            // 寻找【今日交易开始点】(仅在分钟图绘制，日线不绘制)
+            const isDay = (currentChartType === '101');
+            const isMinuteChart = !isDay;
+            const latestDate = visibleBars[count - 1].date.split(' ')[0];
+            let todayStartIndex = -1;
+
+            if (isMinuteChart) {
+                for (let i = 0; i < count; i++) {
+                    if (visibleBars[i].date.split(' ')[0] === latestDate) {
+                        todayStartIndex = i;
+                        break;
+                    }
+                }
+
+                if (todayStartIndex > 0) {
+                    const todayStartX = todayStartIndex * step;
+                    ctx.fillStyle = 'rgba(56, 139, 253, 0.04)';
+                    ctx.fillRect(todayStartX, 0, w - todayStartX, chartAvailableH);
+                }
+            }
+
+            // 绘制各交易日分界线与最新时段分割线 (清爽精简，仅保留单根细金分割线与日/夜盘标识)
+            let prevDay = '';
+            let lastLabelX = -999;
+
+            visibleBars.forEach((k, idx) => {
+                const dayStr = k.date.split(' ')[0];
+                const x = idx * step;
+                if (prevDay && dayStr !== prevDay && isMinuteChart) {
+                    const isTodayDivider = (dayStr === latestDate);
+
+                    if (isTodayDivider) {
+                        // 最新时段黄金分割虚线 (通透清爽，无遮挡)
+                        ctx.strokeStyle = '#e3b341';
+                        ctx.lineWidth = m.lwDivider;
+                        ctx.setLineDash([4, 3]);
+                        ctx.beginPath();
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, chartAvailableH);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+
+                        // 识别开盘时段 (日盘 / 夜盘)
+                        let session = '';
+                        if (k.date.includes(' ')) {
+                            const hour = parseInt(k.date.split(' ')[1].split(':')[0]);
+                            session = (hour >= 20 || hour < 4) ? '夜盘' : (hour >= 8 && hour < 16) ? '日盘' : '';
+                        }
+                        const labelText = session ? `${dayStr.substring(5)} ${session}` : dayStr.substring(5);
+
+                        // 底部时间轴金标正常显示日期与时段
+                        ctx.fillStyle = '#e3b341';
+                        ctx.font = 'bold ' + FONT;
+                        ctx.textAlign = 'center';
+                        ctx.fillText(labelText, x, chartAvailableH + 15);
+                        lastLabelX = x + 35;
+                    } else {
+                        // 历史各交易日分界线 (极细暗色虚线)
+                        ctx.strokeStyle = '#162232';
+                        ctx.lineWidth = m.lwAxis;
+                        ctx.setLineDash([2, 4]);
+                        ctx.beginPath();
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, chartAvailableH);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+
+                        // 智能防重叠抽稀算法：仅当水平间距足够时才绘制日期文字
+                        if (x - lastLabelX >= (m.mobile ? 50 : 65) && w - x >= 30 && x >= 25) {
+                            ctx.fillStyle = '#58a6ff';
+                            ctx.font = FONT;
+                            ctx.textAlign = 'center';
+                            ctx.fillText(dayStr.substring(5), x, chartAvailableH + 15);
+                            lastLabelX = x;
+                        }
+                    }
+                }
+                prevDay = dayStr;
+            });
+
+            // 日K线 (101) 的自适应时间轴刻度
+            if (isDay) {
+                let lastDayLabelX = -999;
+                visibleBars.forEach((k, idx) => {
+                    const x = idx * step + step / 2;
+                    if (x - lastDayLabelX >= (m.mobile ? 55 : 70) && w - x >= 30 && x >= 25) {
+                        ctx.fillStyle = '#58a6ff';
+                        ctx.font = FONT;
+                        ctx.textAlign = 'center';
+                        ctx.fillText(k.date.substring(5), x, chartAvailableH + 15);
+                        lastDayLabelX = x;
+                    }
+                });
+            }
+
+            // 绘制 K 柱与影线 (主图区域：空心阳线 + 实心阴线，清爽透气，彻底消除拥挤感)
+            visibleBars.forEach((k, idx) => {
+                const x = idx * step + step / 2;
+                const isUp = k.close >= k.open;
+                const isDoji = Math.abs(k.close - k.open) < 0.0001;
+
+                const yOpen = mainH - ((k.open - botP) / (topP - botP)) * mainH;
+                const yClose = mainH - ((k.close - botP) / (topP - botP)) * mainH;
+                const yHigh = mainH - ((k.high - botP) / (topP - botP)) * mainH;
+                const yLow = mainH - ((k.low - botP) / (topP - botP)) * mainH;
+
+                const topY = Math.min(yOpen, yClose);
+                const bHeight = Math.max(1.5, Math.abs(yOpen - yClose));
+                const bx = x - barWidth / 2;
+
+                if (isUp && !isDoji) {
+                    // ===== 空心阳线 (Hollow Red Candle) =====
+                    // 1. 底色填充，干净隔绝背景网格与均线
+                    ctx.fillStyle = '#080c12';
+                    ctx.fillRect(bx, topY, barWidth, bHeight);
+
+                    // 2. 红色空心边框
+                    ctx.strokeStyle = '#f85149';
+                    ctx.lineWidth = m.lwWick;
+                    ctx.strokeRect(bx, topY, barWidth, bHeight);
+
+                    // 3. 影线：上影线连接最高点至实体顶端，下影线连接实体底端至最低点（不穿透中空体）
+                    ctx.beginPath();
+                    if (yHigh < topY) {
+                        ctx.moveTo(x, yHigh);
+                        ctx.lineTo(x, topY);
+                    }
+                    if (yLow > topY + bHeight) {
+                        ctx.moveTo(x, topY + bHeight);
+                        ctx.lineTo(x, yLow);
+                    }
+                    ctx.stroke();
+                } else if (isDoji) {
+                    // 十字星 (平盘线)
+                    ctx.strokeStyle = '#8b9db7';
+                    ctx.lineWidth = m.lwWick;
+                    ctx.beginPath();
+                    ctx.moveTo(x, yHigh);
+                    ctx.lineTo(x, yLow);
+                    ctx.moveTo(bx, topY);
+                    ctx.lineTo(bx + barWidth, topY);
+                    ctx.stroke();
+                } else {
+                    // ===== 实心阴线 (Solid Green Candle) =====
+                    ctx.strokeStyle = '#2ea043';
+                    ctx.lineWidth = m.lwWick;
+                    ctx.beginPath();
+                    ctx.moveTo(x, yHigh);
+                    ctx.lineTo(x, yLow);
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#2ea043';
+                    ctx.fillRect(bx, topY, barWidth, bHeight);
+                }
+            });
+
+            // 均线绘制
+            function drawMALine(key, color) {
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = m.lwMA;
+                let started = false;
+                visibleBars.forEach((k, idx) => {
+                    if (k[key]) {
+                        const x = idx * step + step / 2;
+                        const y = mainH - ((k[key] - botP) / (topP - botP)) * mainH;
+                        if (!started) { ctx.moveTo(x, y); started = true; }
+                        else ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+            }
+
+            drawMALine('ma5', '#f1c40f');
+            drawMALine('ma10', '#9b59b6');
+            drawMALine('ma20', '#3498db');
+
+            // 成交量副图 (严格绘制在 volTop 与 volBottom 之间，绝不与时间轴文字撞车)
+            const maxVol = Math.max(...visibleBars.map(k => k.vol)) || 1;
+            visibleBars.forEach((k, idx) => {
+                const x = idx * step + step / 2;
+                const bH = Math.max(1, (k.vol / maxVol) * volH);
+                const isUp = k.close >= k.open;
+                const bx = x - barWidth / 2;
+                if (isUp) {
+                    ctx.fillStyle = '#080c12';
+                    ctx.fillRect(bx, volBottom - bH, barWidth, bH);
+                    ctx.strokeStyle = '#f85149';
+                    ctx.lineWidth = m.lwWick;
+                    ctx.strokeRect(bx, volBottom - bH, barWidth, bH);
+                } else {
+                    ctx.fillStyle = '#2ea043';
+                    ctx.fillRect(bx, volBottom - bH, barWidth, bH);
+                }
+            });
+
+            // 挂载鼠标悬停十字光标事件
+            activeRenderData = { klines: visibleBars, step, topP, botP, mainH, h, w };
+            bindCanvasHover(canvas);
+
+            updateChartLegendText();
+            return visibleBars.length;
+        }
+
+        function updateChartLegendText() {
+            const legendEl = document.getElementById('chart-legend');
+            if (!legendEl || !activeModalSecId) return;
+
+            if (currentChartType === 'trend') {
+                legendEl.innerHTML = `
+                    <div class="legend-item"><span class="legend-dot" style="background:#f0f6fc;"></span><span>实时价格白线</span></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#f1c40f;"></span><span>均价线 (VWAP)</span></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#6e839e;"></span><span>昨结基准: ${activeModalQuote ? activeModalQuote.prevSettle : '--'}</span></div>
+                `;
+            } else {
+                const kName = currentChartType === '5' ? '5分钟K' :
+                              currentChartType === '15' ? '15分钟K' :
+                              currentChartType === '60' ? '60分钟K' : '日K线';
+                const totalLoaded = cachedFullKlines ? cachedFullKlines.length : 0;
+                legendEl.innerHTML = `
+                    <div class="legend-item"><span style="color:#58a6ff; font-weight:bold;">${kName} (当前展示 ${currentVisibleCount} 根 / 共 ${totalLoaded} 根)</span></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#f1c40f;"></span><span>MA5</span></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#9b59b6;"></span><span>MA10</span></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#3498db;"></span><span>MA20</span></div>
+                `;
+            }
+        }
+
+        // 鼠标悬停实时展示 K 柱详情
+        let hoverBound = false;
+        function bindCanvasHover(canvas) {
+            if (hoverBound) return;
+            hoverBound = true;
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (!activeRenderData || currentChartType === 'trend') return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const { klines, step } = activeRenderData;
+                const idx = Math.floor(mouseX / step);
+                if (idx >= 0 && idx < klines.length) {
+                    const k = klines[idx];
+                    const isUp = k.close >= k.open;
+                    const infoEl = document.getElementById('chart-status-text');
+                    if (infoEl) {
+                        infoEl.innerHTML = `
+                            <span>${k.date}</span> | 
+                            <span>开: ${k.open}</span> 
+                            <span>高: ${k.high}</span> 
+                            <span>低: ${k.low}</span> 
+                            <span style="color:${isUp ? '#f85149':'#2ea043'}; font-weight:bold;">收: ${k.close}</span> | 
+                            <span>量: ${k.vol}手</span>
+                        `;
+                    }
+                }
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                const infoEl = document.getElementById('chart-status-text');
+                if (infoEl && activeRenderData) {
+                    infoEl.innerHTML = `✅ 已成功加载 ${activeRenderData.klines.length} 根 K 柱 (移动光标查看具体明细)`;
+                }
+            });
+        }
+
+        function calcMA(list, idx, n) {
+            if (idx < n - 1) return null;
+            let sum = 0;
+            for (let i = idx - n + 1; i <= idx; i++) sum += list[i].close;
+            return sum / n;
+        }
+
+        // ==================== PWA Service Worker 注册与桌面化安装支持 ====================
+        let deferredPwaPrompt = null;
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then((reg) => {
+                    console.log('[PWA] Service Worker 已成功运行在域:', reg.scope);
+                }).catch((err) => {
+                    console.warn('[PWA] Service Worker 注册被跳过:', err);
+                });
+            });
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // 阻止浏览器默认迷你横条，保留安装事件供用户按需触发
+            e.preventDefault();
+            deferredPwaPrompt = e;
+            console.log('[PWA] 应用已就绪，支持一键添加到桌面/主屏幕');
+        });
+
+        // 提前压入守卫状态，保证无论脚本何时被评估均可拦截返回手势
+        initPwaHistoryGuard();
+
+        // 确保无论 DOM 何时就绪都能稳定启动 init（兼顾 PWA / Webview / 缓存即时启动）
+        if (document.readyState === 'loading') {
+            window.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

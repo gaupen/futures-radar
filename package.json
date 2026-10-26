@@ -1,0 +1,13 @@
+{
+  "name": "futures-radar",
+  "version": "1.0.0",
+  "description": "国内商品期货实物交割基差雷达移动实时终端 (Cloudflare Worker + Static Assets)",
+  "main": "src/worker/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}

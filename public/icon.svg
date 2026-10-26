@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080e1a"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <radialGradient id="radarSweep" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+      <stop offset="70%" stop-color="#0ea5e9" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#0369a1" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- 背景底板 (带微倒角) -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="4"/>
+
+  <!-- 雷达同心圆 -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#1e293b" stroke-width="2" stroke-dasharray="6 6"/>
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#334155" stroke-width="2"/>
+  <circle cx="256" cy="256" r="85" fill="none" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.6"/>
+  <circle cx="256" cy="256" r="30" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-opacity="0.9"/>
+
+  <!-- 雷达十字坐标轴 -->
+  <line x1="66" y1="256" x2="446" y2="256" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <line x1="256" y1="66" x2="256" y2="446" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4"/>
+
+  <!-- 雷达扫描扇区光束 -->
+  <path d="M 256 256 L 390 122 A 190 190 0 0 1 446 256 Z" fill="url(#radarSweep)"/>
+
+  <!-- 左侧空头跳水 K 线 (翡翠绿) -->
+  <line x1="175" y1="180" x2="175" y2="330" stroke="#22c55e" stroke-width="4" stroke-linecap="round"/>
+  <rect x="161" y="215" width="28" height="85" rx="5" fill="#22c55e" filter="url(#neonGlow)"/>
+
+  <!-- 右侧多头突破 K 线 (亮烈火红) -->
+  <line x1="337" y1="150" x2="337" y2="310" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+  <rect x="323" y="175" width="28" height="95" rx="5" fill="#ef4444" filter="url(#neonGlow)"/>
+
+  <!-- 中央黄色异动闪电核心 -->
+  <polygon points="266,130 226,250 256,250 246,380 286,260 256,260" fill="#facc15" filter="url(#neonGlow)"/>
+
+  <!-- 中心脉冲亮点 -->
+  <circle cx="256" cy="256" r="6" fill="#ffffff" filter="url(#neonGlow)"/>
+</svg>
