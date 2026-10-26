@@ -1,12 +1,10 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// src/worker/index.js - Build: 2026-10-27-multi-market-v1
-var CLIST_FS = "m:113,m:114,m:115,m:220,m:142,m:225";
-var CLIST_FIELDS = "f12,f13,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18,f124";
-var CLIST_UT = "bd1d9ddb04089700cf9c27f6f7426281";
+// src/worker/index.js - Build: 2026-10-27-multi-market-v2-pure-sina
 var KV_KEY = "snapshot:latest";
 var WATCHLIST_KV_KEY = "watchlist:global";
+var FOREIGN_ARCHIVE_SYMBOLS = ["CL", "OIL", "GC", "SI", "HG", "CAD", "ZSD", "NG", "S", "C"];
 
 function jsonResp(obj, status) {
   return new Response(JSON.stringify(obj), {
@@ -171,68 +169,79 @@ async function fetchSinaSnapshotRaw() {
 }
 __name(fetchSinaSnapshotRaw, "fetchSinaSnapshotRaw");
 
-var CLIST_HOSTS = [
-  "http://82.push2.eastmoney.com",
-  "https://82.push2.eastmoney.com",
-  "http://push2delay.eastmoney.com",
-  "https://push2delay.eastmoney.com",
-  "https://push2.eastmoney.com"
-];
-
-async function fetchClistRaw() {
-  const headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-    "Referer": "https://quote.eastmoney.com/"
-  };
-  const errors = [];
-  for (const host of CLIST_HOSTS) {
-    const makeUrl = /* @__PURE__ */ __name((po) => host + "/api/qt/clist/get?pn=1&pz=100&po=" + po + "&np=1&fltt=2&invt=2&fid=f3&fs=" + CLIST_FS + "&fields=" + CLIST_FIELDS + "&ut=" + CLIST_UT + "&_t=" + Date.now(), "makeUrl");
-    try {
-      const resUp = await fetch(makeUrl(1), { headers });
-      if (!resUp.ok) {
-        errors.push(`${host} Up: ${resUp.status}`);
-        continue;
-      }
-      const jsonUp = await resUp.json();
-      await new Promise((r) => setTimeout(r, 150));
-      const resDown = await fetch(makeUrl(0), { headers });
-      if (!resDown.ok) {
-        errors.push(`${host} Down: ${resDown.status}`);
-        continue;
-      }
-      const jsonDown = await resDown.json();
-      const diffUp = jsonUp && jsonUp.data && Array.isArray(jsonUp.data.diff) ? jsonUp.data.diff : [];
-      const diffDown = jsonDown && jsonDown.data && Array.isArray(jsonDown.data.diff) ? jsonDown.data.diff : [];
-      const map = /* @__PURE__ */ new Map();
-      [...diffUp, ...diffDown].forEach((item) => {
-        if (item && item.f12) {
-          const secid = `${item.f13}.${item.f12}`;
-          map.set(secid, item);
-        }
-      });
-      const result = Array.from(map.values());
-      if (result.length > 0) return result;
-      errors.push(`${host}: empty merged result (Up: ${diffUp.length}, Down: ${diffDown.length})`);
-    } catch (err) {
-      errors.push(`${host}: ${err && err.message || err}`);
-    }
-  }
-  throw new Error("All clist hosts failed: " + errors.join(" | "));
-}
-__name(fetchClistRaw, "fetchClistRaw");
-
 async function fetchLatestMarketDiff() {
-  try {
-    const sinaDiff = await fetchSinaSnapshotRaw();
-    if (sinaDiff && sinaDiff.length >= 50) {
-      return sinaDiff;
-    }
-  } catch (err) {
-    console.warn("[worker] Sina snapshot failed, fallback to EastMoney:", err && err.message || err);
-  }
-  return await fetchClistRaw();
+  return await fetchSinaSnapshotRaw();
 }
 __name(fetchLatestMarketDiff, "fetchLatestMarketDiff");
+
+async function archiveForeignFuturesDay(env, targetDateStr) {
+  const results = await Promise.all(FOREIGN_ARCHIVE_SYMBOLS.map(async sym => {
+    try {
+      const url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${sym}`;
+      const resp = await fetch(url, {
+        headers: { "Referer": "https://finance.sina.com.cn", "User-Agent": "Mozilla/5.0" }
+      });
+      if (!resp.ok) return { sym, preSettle: 0, bars: [] };
+      const text = await resp.text();
+      const m = text.match(/\(\s*(\{[\s\S]*\})\s*\)/);
+      if (!m) return { sym, preSettle: 0, bars: [] };
+      const json = JSON.parse(m[1]);
+      const minLine = json.minLine_1d || [];
+      const cleanBars = [];
+      let preSettle = 0;
+      for (let i = 0; i < minLine.length; i++) {
+        const item = minLine[i];
+        if (!item || item.length < 5) continue;
+        if (i === 0) {
+          preSettle = parseFloat(item[1]) || 0;
+          const p = parseFloat(item[5]) || 0;
+          const a = parseFloat(item[8]) || 0;
+          const t = item[9] || (item[0] + ' ' + item[4]);
+          const v = parseInt(item[6]) || 0;
+          if (p > 0) cleanBars.push([t, p, (a > 0 ? a : p), v]);
+        } else {
+          const p = parseFloat(item[1]) || 0;
+          const a = parseFloat(item[4]) || 0;
+          const t = item[item.length - 1] || item[0];
+          const v = parseInt(item[2]) || 0;
+          if (p > 0) cleanBars.push([t, p, (a > 0 ? a : p), v]);
+        }
+      }
+      return { sym, preSettle, bars: cleanBars };
+    } catch (e) {
+      return { sym, preSettle: 0, bars: [] };
+    }
+  }));
+
+  const validCount = results.filter(r => r.bars.length >= 100).length;
+  if (validCount < 2) {
+    throw new Error(`外盘分时数据不完整 (仅 ${validCount} 个品种点数 >= 100)，推迟归档`);
+  }
+
+  const contracts = {};
+  const preSettlements = {};
+  for (const r of results) {
+    if (r.bars.length > 0) {
+      contracts[r.sym] = r.bars;
+      preSettlements[r.sym] = r.preSettle;
+    }
+  }
+
+  const payload = {
+    date: targetDateStr,
+    updatedAt: Date.now(),
+    savedAt: new Date().toISOString(),
+    symbols: Object.keys(contracts),
+    preSettlements,
+    contracts
+  };
+
+  const key = `foreign:1min:${targetDateStr}`;
+  await env.FUTURES_KV.put(key, JSON.stringify(payload), { expirationTtl: 86400 * 8 });
+  await env.FUTURES_KV.put(`cron:done:foreign:${targetDateStr}`, "1", { expirationTtl: 86400 * 2 });
+  return payload;
+}
+__name(archiveForeignFuturesDay, "archiveForeignFuturesDay");
 
 async function saveSnapshot(env, diff, minCount = 50) {
   const validatedDiff = validateAndSanitizeDiff(diff, minCount);
@@ -311,57 +320,78 @@ var index_default = {
         return new Response("// error: " + (e && e.message || String(e)), { status: 502 });
       }
     }
-    if (url.pathname === "/api/eastmoney/trends") {
-      const secid = url.searchParams.get("secid");
-      const ndays = url.searchParams.get("ndays") || "5";
-      if (!secid) return jsonResp({ error: "missing secid" }, 400);
+    if (url.pathname === "/api/history/foreign-min") {
+      if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
+      const rawSym = url.searchParams.get("symbol") || url.searchParams.get("secid");
+      if (!rawSym) return jsonResp({ ok: false, error: "缺少 symbol 参数" }, 400);
+      const pureSym = rawSym.replace(/^hf_/i, "").toUpperCase();
 
-      // 1. 边缘缓存 (Cloudflare Edge Cache 15秒，命中 0ms 响应)
-      const cache = caches.default;
-      const cacheKey = new Request(url.toString(), request);
-      try {
-        const cachedResp = await cache.match(cacheKey);
-        if (cachedResp) return cachedResp;
-      } catch (ce) {}
+      // 获取最近 4 个有效归档日 (排除周日)
+      const targetDates = [];
+      for (let i = 1; i <= 7; i++) {
+        const d = new Date(Date.now() + 8 * 3600 * 1000 - i * 86400 * 1000);
+        if (d.getUTCDay() !== 0) {
+          targetDates.push(d.toISOString().slice(0, 10));
+        }
+        if (targetDates.length >= 4) break;
+      }
+      targetDates.reverse(); // 时间正序：[最老, ..., 昨天]
 
-      // 2. 轮询东财多节点 (超时收紧为 1200ms 快速失败，绝不空转拖垮系统)
-      const hosts = [
-        "https://push2his.eastmoney.com",
-        "https://82.push2.eastmoney.com",
-        "https://push2.eastmoney.com"
-      ];
-      for (const h of hosts) {
+      const historyBars = [];
+      const foundDates = [];
+      let latestPreSettle = 0;
+
+      for (const d of targetDates) {
         try {
-          const emUrl = `${h}/api/qt/stock/trends2/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=${ndays}`;
-          const emResp = await fetch(emUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-              "Referer": "https://quote.eastmoney.com/"
-            },
-            signal: AbortSignal.timeout(1200)
-          });
-          if (emResp.ok) {
-            const data = await emResp.text();
-            if (data && data.includes('"trends"')) {
-              const respToCache = new Response(data, {
-                status: 200,
-                headers: {
-                  "content-type": "application/json; charset=utf-8",
-                  "access-control-allow-origin": "*",
-                  "cache-control": "public, max-age=15"
-                }
-              });
-              if (ctx && typeof ctx.waitUntil === 'function') {
-                ctx.waitUntil(cache.put(cacheKey, respToCache.clone()));
+          const raw = await env.FUTURES_KV.get(`foreign:1min:${d}`);
+          if (!raw) continue;
+          const archive = JSON.parse(raw);
+          if (archive && archive.contracts && Array.isArray(archive.contracts[pureSym])) {
+            const cBars = archive.contracts[pureSym];
+            if (cBars.length > 0) {
+              foundDates.push(d);
+              if (archive.preSettlements && archive.preSettlements[pureSym]) {
+                latestPreSettle = archive.preSettlements[pureSym];
               }
-              return respToCache;
+              for (const b of cBars) {
+                historyBars.push({
+                  timeStr: b[0],
+                  price: b[1],
+                  avgPrice: b[2],
+                  vol: b[3] || 0
+                });
+              }
             }
           }
-        } catch (e) {
-          // try next host quickly
-        }
+        } catch (e) {}
       }
-      return jsonResp({ error: "all eastmoney hosts failed" }, 502);
+
+      return jsonResp({
+        ok: true,
+        symbol: pureSym,
+        count: historyBars.length,
+        dates: foundDates,
+        preSettlement: latestPreSettle,
+        bars: historyBars
+      });
+    }
+    if (url.pathname === "/api/cron/trigger-sync") {
+      if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
+      const type = url.searchParams.get("type") || "foreign";
+      const dateStr = url.searchParams.get("date") || new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+      try {
+        if (type === "foreign") {
+          const saved = await archiveForeignFuturesDay(env, dateStr);
+          return jsonResp({ ok: true, type: "foreign", date: dateStr, symbols: saved.symbols.length, savedAt: saved.savedAt });
+        } else if (type === "domestic") {
+          const diff = await fetchSinaSnapshotRaw();
+          const saved = await saveSnapshot(env, diff, 50);
+          return jsonResp({ ok: true, type: "domestic", count: saved.count, savedAt: saved.savedAt });
+        }
+        return jsonResp({ ok: false, error: "unknown sync type" }, 400);
+      } catch (e) {
+        return jsonResp({ ok: false, error: e && e.message || String(e) }, 500);
+      }
     }
     if (url.pathname === "/api/watchlist") {
       if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
@@ -560,22 +590,60 @@ var index_default = {
     if (!env.ASSETS) return new Response("Assets 未配置", { status: 500 });
     return env.ASSETS.fetch(request);
   },
-  // ---- Cron：15:05 / 23:35 / 02:35（北京时间）自动抓收盘存快照 (新浪主力 + 东财备用) ----
+  // ---- 统一单 Cron 状态机 (每 1 分钟调度，UTC+8 时区自愈重试) ----
   async scheduled(event, env, ctx) {
-    try {
-      if (!env.FUTURES_KV) {
-        console.warn("[cron] KV 未绑定，跳过");
-        return;
+    if (!env.FUTURES_KV) {
+      console.warn("[cron] KV 未绑定 FUTURES_KV，跳过");
+      return;
+    }
+    const bjNow = new Date(Date.now() + 8 * 3600 * 1000);
+    const hours = bjNow.getUTCHours();
+    const minutes = bjNow.getUTCMinutes();
+    const hm = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    const dayOfWeek = bjNow.getUTCDay(); // 0: 日, 1: 一, ..., 6: 六
+    const dateStr = bjNow.toISOString().slice(0, 10);
+
+    // 1. 外盘 CME 交易日收盘归档窗口 (北京时间 05:05 ~ 06:30，周二至周六早晨)
+    // 周日和周一早晨美盘休市无新结算，周二~周六收盘对应美盘上一交易日
+    if (dayOfWeek >= 2 && dayOfWeek <= 6 && hm >= "05:05" && hm <= "06:30") {
+      const doneKey = `cron:done:foreign:${dateStr}`;
+      const isDone = await env.FUTURES_KV.get(doneKey);
+      if (!isDone) {
+        try {
+          const saved = await archiveForeignFuturesDay(env, dateStr);
+          console.log(`[cron] 外盘 1 分钟分时全量归档成功 @ ${dateStr}, 品种数: ${saved.symbols.length}`);
+        } catch (e) {
+          console.warn(`[cron] 外盘归档重试中 (${hm}):`, e && e.message || e);
+        }
       }
-      const diff = await fetchLatestMarketDiff();
-      if (!diff.length) {
-        console.warn("[cron] 行情接口返回空，跳过（可能休市/限流）");
-        return;
+    }
+
+    // 2. 国内期货收盘快照窗口 (保存 snapshot:latest，确保休市和周末有权威基准价)
+    // A) 日盘收盘：15:02 ~ 15:20 (周一至周五)
+    // B) 夜盘收盘1：23:02 ~ 23:20 (周一至周五，橡胶/燃料油/沥青等)
+    // C) 夜盘收盘2：01:02 ~ 01:20 (周二至周六，有色金属铜铝等)
+    // D) 夜盘收盘3：02:32 ~ 02:50 (周二至周六，原油/贵金属金银)
+    let cnBatchKey = null;
+    if (dayOfWeek >= 1 && dayOfWeek <= 5 && hm >= "15:02" && hm <= "15:20") cnBatchKey = "cn_day";
+    else if (dayOfWeek >= 1 && dayOfWeek <= 5 && hm >= "23:02" && hm <= "23:20") cnBatchKey = "cn_night1";
+    else if (dayOfWeek >= 2 && dayOfWeek <= 6 && hm >= "01:02" && hm <= "01:20") cnBatchKey = "cn_night2";
+    else if (dayOfWeek >= 2 && dayOfWeek <= 6 && hm >= "02:32" && hm <= "02:50") cnBatchKey = "cn_night3";
+
+    if (cnBatchKey) {
+      const doneKey = `cron:done:${dateStr}:${cnBatchKey}`;
+      const isDone = await env.FUTURES_KV.get(doneKey);
+      if (!isDone) {
+        try {
+          const diff = await fetchSinaSnapshotRaw();
+          if (diff && diff.length >= 50) {
+            const saved = await saveSnapshot(env, diff, 50);
+            await env.FUTURES_KV.put(doneKey, "1", { expirationTtl: 86400 * 2 });
+            console.log(`[cron] 国内快照 (${cnBatchKey}) 已存 ${saved.count} 条 @ ${saved.savedAt}`);
+          }
+        } catch (e) {
+          console.warn(`[cron] 国内快照重试中 (${cnBatchKey} @ ${hm}):`, e && e.message || e);
+        }
       }
-      const saved = await saveSnapshot(env, diff, 50);
-      console.log("[cron] 快照已存", saved.count, "条 @", saved.savedAt, "trigger:", event.cron);
-    } catch (e) {
-      console.error("[cron] 抓取失败：", e && e.message || e);
     }
   }
 };
