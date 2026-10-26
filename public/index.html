@@ -1514,7 +1514,11 @@
                     const asset = ASSET_CATALOG.find(a => a.id.toLowerCase() === low || a.symbol.toLowerCase() === low);
                     if (asset) {
                         set.add(asset.id);
-                    } else if (low.startsWith('hf_') || low.startsWith('gb_') || low.startsWith('rt_hk')) {
+                    } else if (low.startsWith('hf_')) {
+                        set.add('hf_' + c.slice(3).toUpperCase());
+                    } else if (low.startsWith('gb_')) {
+                        set.add('gb_' + c.slice(3).toLowerCase());
+                    } else if (low.startsWith('rt_hk')) {
                         set.add(c);
                     }
                 });
@@ -1529,11 +1533,12 @@
                     if (!line || typeof line !== 'string') continue;
                     const meta = ASSET_CATALOG.find(a => a.id.toLowerCase() === sym.toLowerCase());
                     let quote = null;
-                    if (sym.startsWith('hf_')) {
+                    const lowSym = sym.toLowerCase();
+                    if (lowSym.startsWith('hf_')) {
                         quote = parseGlobalFuturesQuote(sym, line, meta);
-                    } else if (sym.startsWith('gb_')) {
+                    } else if (lowSym.startsWith('gb_')) {
                         quote = parseUsStockQuote(sym, line, meta);
-                    } else if (sym.startsWith('rt_hk')) {
+                    } else if (lowSym.startsWith('rt_hk')) {
                         quote = parseHkStockQuote(sym, line, meta);
                     }
                     if (quote) {

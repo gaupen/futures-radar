@@ -282,8 +282,15 @@ var index_default = {
       });
     }
     if (url.pathname === "/api/sina") {
-      const list = url.searchParams.get("list");
+      let list = url.searchParams.get("list");
       if (!list) return new Response("", { status: 400 });
+      // 自动规范化大小写 (外盘期货 hf_CL/hf_GC 必须大写，美股 gb_nvda/gb_aapl 必须小写)
+      list = list.split(",").map(sym => {
+        const s = sym.trim();
+        if (s.toLowerCase().startsWith("hf_")) return "hf_" + s.slice(3).toUpperCase();
+        if (s.toLowerCase().startsWith("gb_")) return "gb_" + s.slice(3).toLowerCase();
+        return s;
+      }).join(",");
       try {
         const sinaResp = await fetch("https://hq.sinajs.cn/list=" + list, {
           headers: {
@@ -323,7 +330,7 @@ var index_default = {
           if (!body || !Array.isArray(body.list)) {
             return jsonResp({ ok: false, error: "list 必须是合约代码数组" }, 400);
           }
-          const sanitized = body.list.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim().toLowerCase()).slice(0, 200);
+          const sanitized = body.list.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()).slice(0, 200);
           await env.FUTURES_KV.put(WATCHLIST_KV_KEY, JSON.stringify(sanitized));
           return jsonResp({ ok: true, count: sanitized.length });
         } catch (e) {
