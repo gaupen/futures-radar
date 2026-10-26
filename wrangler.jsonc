@@ -11,7 +11,7 @@
   "kv_namespaces": [
     {
       "binding": "FUTURES_KV",
-      "id": "YOUR_FUTURES_KV_ID_HERE"
+      "id": "d07049c664484c6d8e86b54300b84f51"
     }
   ],
   "triggers": {
