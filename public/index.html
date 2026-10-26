@@ -3207,25 +3207,55 @@
             };
         }
 
-        // 触控 / 鼠标 共用：根据画布 X 坐标显示对应 K 柱详情
+        let activeTrendData = null;
+
+        // 触控 / 鼠标 共用：根据画布 X 坐标显示对应 K 柱 / 分时点详情
         function showBarInfoAtX(x) {
-            if (!activeRenderData || currentChartType === 'trend') return;
+            const infoEl = document.getElementById('chart-status-text');
+            if (!infoEl) return;
+
+            if (currentChartType === 'trend') {
+                if (!activeTrendData || !activeTrendData.rawList || activeTrendData.rawList.length === 0) return;
+                const { rawList, sessionConfig, availW, padL, prePrice } = activeTrendData;
+                const slot = Math.max(0, Math.min(sessionConfig.totalMinutes, ((x - padL) / availW) * sessionConfig.totalMinutes));
+
+                let closest = null;
+                let minDiff = Infinity;
+                for (let item of rawList) {
+                    const diff = Math.abs(item.slotIdx - slot);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closest = item;
+                    }
+                }
+                if (closest) {
+                    const isUp = closest.price >= prePrice;
+                    const diffP = closest.price - prePrice;
+                    const ratio = prePrice > 0 ? ((diffP / prePrice) * 100).toFixed(2) : '0.00';
+                    infoEl.innerHTML = `
+                        <span>${closest.time}</span> |
+                        <span style="color:${isUp ? '#f85149' : '#2ea043'}; font-weight:bold;">现价: ${closest.price.toFixed(1)} (${diffP >= 0 ? '+' : ''}${diffP.toFixed(1)}, ${ratio}%)</span> |
+                        <span style="color:#f1c40f;">均价: ${closest.vwap.toFixed(1)}</span> |
+                        <span>量: ${closest.vol}手</span>
+                    `;
+                }
+                return;
+            }
+
+            if (!activeRenderData) return;
             const { klines, step } = activeRenderData;
             const idx = Math.floor(x / step);
             if (idx < 0 || idx >= klines.length) return;
             const k = klines[idx];
             const isUp = k.close >= k.open;
-            const infoEl = document.getElementById('chart-status-text');
-            if (infoEl) {
-                infoEl.innerHTML = `
-                    <span>${k.date}</span> |
-                    <span>开: ${k.open}</span>
-                    <span>高: ${k.high}</span>
-                    <span>低: ${k.low}</span>
-                    <span style="color:${isUp ? '#f85149' : '#2ea043'}; font-weight:bold;">收: ${k.close}</span> |
-                    <span>量: ${k.vol}手</span>
-                `;
-            }
+            infoEl.innerHTML = `
+                <span>${k.date}</span> |
+                <span>开: ${k.open}</span>
+                <span>高: ${k.high}</span>
+                <span>低: ${k.low}</span>
+                <span style="color:${isUp ? '#f85149' : '#2ea043'}; font-weight:bold;">收: ${k.close}</span> |
+                <span>量: ${k.vol}手</span>
+            `;
         }
 
         // 触控手势：双指捏合缩放 K 线、单指拖动平移、单指上下滑切换合约（全屏阻止页面穿透滚动）
@@ -3330,6 +3360,15 @@
             canvas.addEventListener('touchcancel', () => {
                 touchState = null;
             });
+
+            // 桌面端鼠标十字光标详情联动
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                showBarInfoAtX(e.clientX - rect.left);
+            });
+            canvas.addEventListener('mouseleave', () => {
+                updateChartLegendText();
+            });
         }
 
         async function renderProChart() {
@@ -3398,133 +3437,214 @@
             }
         }
 
-        // 绘制当日分时高清图 (新浪高精通道，闭市自动回退当日 5 分钟线)
-        async function drawTrendChart(ctx, w, h) {
-            let rawList = [];
-            const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
 
-            try {
-                // 1. 尝试直接获取新浪当日分时数据
-                const minUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getMinLine?symbol=${symbol}`;
-                const minArr = await loadSinaFuturesJsonp(minUrl);
 
-                if (minArr && Array.isArray(minArr) && minArr.length > 0) {
-                    rawList = minArr.map(item => ({
-                        time: item[0] || '',
-                        price: parseFloat(item[1]) || 0,
-                        vwap: parseFloat(item[2]) || parseFloat(item[1]) || 0,
-                        vol: parseInt(item[3]) || 0
-                    })).filter(d => d.price > 0);
-                }
-
-                // 2. 若当日分时为空（如休市时），从 5 分钟 K 线中提取最新交易日的分时走势
-                if (rawList.length === 0) {
-                    const min5Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=5`;
-                    const min5Arr = await loadSinaFuturesJsonp(min5Url);
-                    if (min5Arr && min5Arr.length > 0) {
-                        const latestDate = min5Arr[min5Arr.length - 1].d.split(' ')[0];
-                        const dayBars = min5Arr.filter(b => b.d.split(' ')[0] === latestDate);
-                        rawList = dayBars.map(b => ({
-                            time: b.d.split(' ')[1] || b.d,
-                            price: parseFloat(b.c) || 0,
-                            vwap: (parseFloat(b.h) + parseFloat(b.l) + parseFloat(b.c)) / 3,
-                            vol: parseInt(b.v) || 0
-                        })).filter(d => d.price > 0);
-                    }
-                }
-            } catch(e) {
-                console.error('Draw trend error:', e);
+        // ==================== 期货全时段分时时间框架引擎 ====================
+        function getFuturesSessionConfig(code, secid) {
+            let variety = '';
+            if (code) {
+                const m = code.match(/^[A-Za-z]+/);
+                if (m) variety = m[0].toUpperCase();
+            }
+            if (!variety && secid && secid.includes('.')) {
+                const part = secid.split('.')[1];
+                const m = part.match(/^[A-Za-z]+/);
+                if (m) variety = m[0].toUpperCase();
             }
 
-            if (!rawList || rawList.length === 0) {
-                ctx.fillStyle = '#8b9db7';
-                ctx.font = '14px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('暂无分时数据或休市中', w / 2, h / 2);
-                return 0;
+            // 1. 贵金属（02:30 闭盘）
+            const night0230 = ['AU', 'AG'];
+            // 2. 有色金属 + 原油系（01:00 闭盘）
+            const night0100 = ['CU', 'AL', 'ZN', 'PB', 'NI', 'SN', 'AO', 'BC', 'SC', 'LU'];
+            // 3. 绝大多数黑色、能化、农产品等大宗商品（23:00 闭盘）
+            const night2300 = [
+                'RM', 'OI', 'RS', 'TA', 'MA', 'FG', 'SA', 'SR', 'CF', 'CY', 'UR', 'PF', 'SH', 'PX', 'SM', 'SF',
+                'M', 'Y', 'A', 'B', 'P', 'C', 'CS', 'I', 'J', 'JM', 'L', 'PP', 'V', 'PVC', 'EG', 'EB', 'PG',
+                'RB', 'HC', 'SS', 'WR', 'RU', 'BR', 'SP', 'BU', 'FU'
+            ];
+            // 4. 中金所股指
+            const cffexStock = ['IF', 'IC', 'IM', 'IH'];
+            // 5. 中金所国债
+            const cffexBond = ['T', 'TF', 'TS', 'TL'];
+
+            if (night0230.includes(variety)) {
+                // 贵金属：21:00-02:30 (330m) + 09:00-10:15 (75m) + 10:30-11:30 (60m) + 13:30-15:00 (90m) = 555m
+                return {
+                    name: '02:30收盘',
+                    totalMinutes: 555,
+                    hasNight: true,
+                    nightPastMidnight: true,
+                    segments: [
+                        { startH: 21, startM: 0, endH: 26, endM: 30, baseMin: 0, duration: 330 },
+                        { startH: 9,  startM: 0, endH: 10, endM: 15, baseMin: 330, duration: 75 },
+                        { startH: 10, startM: 30, endH: 11, endM: 30, baseMin: 405, duration: 60 },
+                        { startH: 13, startM: 30, endH: 15, endM: 0,  baseMin: 465, duration: 90 }
+                    ],
+                    splits: [
+                        { min: 0,   label: '21:00', align: 'left' },
+                        { min: 330, label: '02:30/09:00', align: 'center' },
+                        { min: 405, label: '10:15', align: 'center' },
+                        { min: 465, label: '11:30/13:30', align: 'center' },
+                        { min: 555, label: '15:00', align: 'right' }
+                    ]
+                };
             }
 
-            const prePrice = activeModalQuote.prevSettle || rawList[0].price;
-            const prices = rawList.map(d => d.price);
-            const maxP = Math.max(...prices, prePrice);
-            const minP = Math.min(...prices, prePrice);
-            const diff = Math.max(Math.abs(maxP - prePrice), Math.abs(prePrice - minP)) || 1;
-            const topP = prePrice + diff * 1.05;
-            const botP = prePrice - diff * 1.05;
-
-            const mainH = h * 0.70;
-            const volH = h * 0.22;
-
-            // 网格
-            ctx.strokeStyle = '#1a2332';
-            ctx.lineWidth = 1;
-            for (let i = 0; i <= 4; i++) {
-                const y = (mainH / 4) * i;
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(w, y);
-                ctx.stroke();
-
-                const curP = topP - ((topP - botP) / 4) * i;
-                const changeRatio = prePrice > 0 ? ((curP - prePrice) / prePrice) * 100 : 0;
-                ctx.fillStyle = changeRatio > 0.01 ? '#f85149' : changeRatio < -0.01 ? '#2ea043' : '#8b9db7';
-                ctx.font = '10px var(--font-mono)';
-                ctx.textAlign = 'right';
-                ctx.fillText(`${curP.toFixed(1)} (${changeRatio >= 0 ? '+' : ''}${changeRatio.toFixed(2)}%)`, w - 8, y - 4);
+            if (night0100.includes(variety)) {
+                // 有色/原油：21:00-01:00 (240m) + 09:00-10:15 (75m) + 10:30-11:30 (60m) + 13:30-15:00 (90m) = 465m
+                return {
+                    name: '01:00收盘',
+                    totalMinutes: 465,
+                    hasNight: true,
+                    nightPastMidnight: true,
+                    segments: [
+                        { startH: 21, startM: 0, endH: 25, endM: 0, baseMin: 0, duration: 240 },
+                        { startH: 9,  startM: 0, endH: 10, endM: 15, baseMin: 240, duration: 75 },
+                        { startH: 10, startM: 30, endH: 11, endM: 30, baseMin: 315, duration: 60 },
+                        { startH: 13, startM: 30, endH: 15, endM: 0,  baseMin: 375, duration: 90 }
+                    ],
+                    splits: [
+                        { min: 0,   label: '21:00', align: 'left' },
+                        { min: 240, label: '01:00/09:00', align: 'center' },
+                        { min: 315, label: '10:15', align: 'center' },
+                        { min: 375, label: '11:30/13:30', align: 'center' },
+                        { min: 465, label: '15:00', align: 'right' }
+                    ]
+                };
             }
 
-            // 昨结中轴虚线
-            const zeroY = mainH - ((prePrice - botP) / (topP - botP)) * mainH;
-            ctx.strokeStyle = '#3e4c63';
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.moveTo(0, zeroY);
-            ctx.lineTo(w, zeroY);
-            ctx.stroke();
-            ctx.setLineDash([]);
+            if (night2300.includes(variety)) {
+                // 23:00类：21:00-23:00 (120m) + 09:00-10:15 (75m) + 10:30-11:30 (60m) + 13:30-15:00 (90m) = 345m
+                return {
+                    name: '23:00收盘',
+                    totalMinutes: 345,
+                    hasNight: true,
+                    nightPastMidnight: false,
+                    segments: [
+                        { startH: 21, startM: 0, endH: 23, endM: 0, baseMin: 0, duration: 120 },
+                        { startH: 9,  startM: 0, endH: 10, endM: 15, baseMin: 120, duration: 75 },
+                        { startH: 10, startM: 30, endH: 11, endM: 30, baseMin: 195, duration: 60 },
+                        { startH: 13, startM: 30, endH: 15, endM: 0,  baseMin: 255, duration: 90 }
+                    ],
+                    splits: [
+                        { min: 0,   label: '21:00', align: 'left' },
+                        { min: 120, label: '23:00/09:00', align: 'center' },
+                        { min: 195, label: '10:15', align: 'center' },
+                        { min: 255, label: '11:30/13:30', align: 'center' },
+                        { min: 345, label: '15:00', align: 'right' }
+                    ]
+                };
+            }
 
-            // 均价黄线 (VWAP)
-            ctx.beginPath();
-            ctx.strokeStyle = '#f1c40f';
-            ctx.lineWidth = 1.3;
-            rawList.forEach((d, idx) => {
-                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
-                const vwapVal = d.vwap > 0 ? d.vwap : d.price;
-                const y = mainH - ((vwapVal - botP) / (topP - botP)) * mainH;
-                if (idx === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
+            if (cffexStock.includes(variety)) {
+                // 股指：09:30-11:30 (120m) + 13:00-15:00 (120m) = 240m
+                return {
+                    name: '中金所股指',
+                    totalMinutes: 240,
+                    hasNight: false,
+                    nightPastMidnight: false,
+                    segments: [
+                        { startH: 9,  startM: 30, endH: 11, endM: 30, baseMin: 0, duration: 120 },
+                        { startH: 13, startM: 0,  endH: 15, endM: 0,  baseMin: 120, duration: 120 }
+                    ],
+                    splits: [
+                        { min: 0,   label: '09:30', align: 'left' },
+                        { min: 120, label: '11:30/13:00', align: 'center' },
+                        { min: 240, label: '15:00', align: 'right' }
+                    ]
+                };
+            }
 
-            // 价格白线
-            ctx.beginPath();
-            ctx.strokeStyle = '#f0f6fc';
-            ctx.lineWidth = 1.8;
-            rawList.forEach((d, idx) => {
-                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
-                const y = mainH - ((d.price - botP) / (topP - botP)) * mainH;
-                if (idx === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
+            if (cffexBond.includes(variety)) {
+                // 国债：09:15-11:30 (135m) + 13:00-15:15 (135m) = 270m
+                return {
+                    name: '中金所国债',
+                    totalMinutes: 270,
+                    hasNight: false,
+                    nightPastMidnight: false,
+                    segments: [
+                        { startH: 9,  startM: 15, endH: 11, endM: 30, baseMin: 0, duration: 135 },
+                        { startH: 13, startM: 0,  endH: 15, endM: 15, baseMin: 135, duration: 135 }
+                    ],
+                    splits: [
+                        { min: 0,   label: '09:15', align: 'left' },
+                        { min: 135, label: '11:30/13:00', align: 'center' },
+                        { min: 270, label: '15:15', align: 'right' }
+                    ]
+                };
+            }
 
-            // 成交量副图
-            const maxVol = Math.max(...rawList.map(d => d.vol)) || 1;
-            const barW = Math.max(1, (w / rawList.length) - 1);
-            rawList.forEach((d, idx) => {
-                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
-                const bH = (d.vol / maxVol) * volH;
-                ctx.fillStyle = d.price >= prePrice ? '#f85149' : '#2ea043';
-                ctx.fillRect(x - barW/2, h - bH, barW, bH);
-            });
-
-            return rawList.length;
+            // 默认普通无夜盘商品期货：09:00-10:15 (75m) + 10:30-11:30 (60m) + 13:30-15:00 (90m) = 225m
+            return {
+                name: '无夜盘商品',
+                totalMinutes: 225,
+                hasNight: false,
+                nightPastMidnight: false,
+                segments: [
+                    { startH: 9,  startM: 0, endH: 10, endM: 15, baseMin: 0, duration: 75 },
+                    { startH: 10, startM: 30, endH: 11, endM: 30, baseMin: 75, duration: 60 },
+                    { startH: 13, startM: 30, endH: 15, endM: 0,  baseMin: 135, duration: 90 }
+                ],
+                splits: [
+                    { min: 0,   label: '09:00', align: 'left' },
+                    { min: 75,  label: '10:15/10:30', align: 'center' },
+                    { min: 135, label: '11:30/13:30', align: 'center' },
+                    { min: 225, label: '15:00', align: 'right' }
+                ]
+            };
         }
 
-        // 绘制当日分时高清图 (新浪高精通道，闭市自动回退当日 5 分钟线)
+        // 将时分转换为当前时段模板下的分钟槽位 slotIndex (0 ~ totalMinutes)
+        function convertTimeToSlotIndex(timeStr, sessionConfig) {
+            if (!timeStr) return 0;
+            let cleanTime = timeStr.trim();
+            if (cleanTime.includes(' ')) {
+                cleanTime = cleanTime.split(' ')[1] || cleanTime;
+            }
+            const parts = cleanTime.split(':');
+            let h = parseInt(parts[0], 10);
+            let m = parseInt(parts[1] || '0', 10);
+            if (isNaN(h) || isNaN(m)) return 0;
+
+            // 若夜盘跨午夜 (00:00 - 02:30)，且当前时段支持夜盘跨天，0点/1点/2点视作 24点/25点/26点
+            if (sessionConfig.nightPastMidnight && h < 8) {
+                h += 24;
+            }
+
+            const curTotalM = h * 60 + m;
+
+            for (let i = 0; i < sessionConfig.segments.length; i++) {
+                const seg = sessionConfig.segments[i];
+                const sStart = seg.startH * 60 + seg.startM;
+                const sEnd = seg.endH * 60 + seg.endM;
+
+                if (curTotalM >= sStart && curTotalM <= sEnd) {
+                    return seg.baseMin + (curTotalM - sStart);
+                }
+
+                // 处于段间休息小憩期 (如 10:15-10:30 或 11:30-13:30)
+                if (i < sessionConfig.segments.length - 1) {
+                    const nextSeg = sessionConfig.segments[i + 1];
+                    const nextStart = nextSeg.startH * 60 + nextSeg.startM;
+                    if (curTotalM > sEnd && curTotalM < nextStart) {
+                        return seg.baseMin + seg.duration;
+                    }
+                }
+            }
+
+            // 早于首段开盘归入 0
+            const firstSeg = sessionConfig.segments[0];
+            if (curTotalM < (firstSeg.startH * 60 + firstSeg.startM)) return 0;
+
+            // 晚于末段收盘归入 totalMinutes
+            return sessionConfig.totalMinutes;
+        }
+
+        // 绘制当日分时高清图 (全时段固定 X 轴框架，右侧留白真实映射)
         async function drawTrendChart(ctx, w, h) {
             let rawList = [];
             const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
+            const sessionConfig = getFuturesSessionConfig(activeModalQuote ? activeModalQuote.code : '', activeModalSecId);
 
             try {
                 // 1. 尝试直接获取新浪当日分时数据
@@ -3566,6 +3686,13 @@
                 ctx.fillText('暂无分时数据或休市中', w / 2, h / 2);
                 return 0;
             }
+
+            // 为每个数据点映射固定 X 轴分钟槽位 slotIdx
+            rawList.forEach(d => {
+                d.slotIdx = convertTimeToSlotIndex(d.time, sessionConfig);
+            });
+            // 按槽位递增排序
+            rawList.sort((a, b) => a.slotIdx - b.slotIdx);
 
             const prePrice = activeModalQuote.prevSettle || rawList[0].price;
             const prices = rawList.map(d => d.price);
@@ -3577,7 +3704,7 @@
 
             // 移动端线宽 / 字体制表
             const m = getChartMetrics(w);
-            const FONT = (m.mobile ? '12px' : '10px') + ' monospace';
+            const FONT = (m.mobile ? '11px' : '10px') + ' var(--font-mono, monospace)';
 
             // 独立时间轴布局
             const timeAxisH = m.timeAxisH;
@@ -3586,6 +3713,21 @@
             const volTop = mainH + 10;
             const volH = chartAvailableH - volTop;
             const volBottom = chartAvailableH;
+
+            // X 轴有效绘图区域 (左右留微小间距)
+            const padL = 6;
+            const padR = 8;
+            const availW = w - padL - padR;
+            const totalM = sessionConfig.totalMinutes;
+
+            function getX(slot) {
+                const ratio = Math.max(0, Math.min(1, slot / totalM));
+                return padL + ratio * availW;
+            }
+
+            function getY(p) {
+                return mainH - ((p - botP) / (topP - botP)) * mainH;
+            }
 
             // 独立时间轴底色与隔离线
             ctx.fillStyle = '#080c12';
@@ -3597,8 +3739,8 @@
             ctx.lineTo(w, chartAvailableH);
             ctx.stroke();
 
-            // 主图网格与价格刻度
-            ctx.strokeStyle = '#1a2332';
+            // 主图水平网格与价格/涨跌幅刻度
+            ctx.strokeStyle = '#16202e';
             ctx.lineWidth = m.lwAxis;
             for (let i = 0; i <= 4; i++) {
                 const y = (mainH / 4) * i;
@@ -3616,7 +3758,7 @@
             }
 
             // 昨结中轴虚线
-            const zeroY = mainH - ((prePrice - botP) / (topP - botP)) * mainH;
+            const zeroY = getY(prePrice);
             ctx.strokeStyle = '#3e4c63';
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
@@ -3625,53 +3767,118 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
+            // 竖向时段分割虚线 & 底部全时段固定时间刻度标签
+            sessionConfig.splits.forEach(sp => {
+                const spX = getX(sp.min);
+
+                // 在主图和副图贯穿轻度虚线 (排除最左与最右边界)
+                if (sp.min > 0 && sp.min < totalM) {
+                    ctx.strokeStyle = '#1e293b';
+                    ctx.setLineDash([3, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(spX, 0);
+                    ctx.lineTo(spX, chartAvailableH);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // 底部时间轴文字
+                ctx.fillStyle = '#7a8ba3';
+                ctx.font = FONT;
+                ctx.textAlign = sp.align || 'center';
+                const textX = sp.align === 'left' ? spX + 2 : sp.align === 'right' ? spX - 2 : spX;
+                ctx.fillText(sp.label, textX, chartAvailableH + 15);
+            });
+
+            // 价格渐变半透明填充底色 (极具专业金融呼吸质感)
+            if (rawList.length > 1) {
+                const firstX = getX(rawList[0].slotIdx);
+                const lastX = getX(rawList[rawList.length - 1].slotIdx);
+                ctx.beginPath();
+                ctx.moveTo(firstX, zeroY);
+                rawList.forEach((d, idx) => {
+                    const x = getX(d.slotIdx);
+                    const y = getY(d.price);
+                    if (idx === 0) ctx.lineTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.lineTo(lastX, zeroY);
+                ctx.closePath();
+                const grad = ctx.createLinearGradient(0, 0, 0, mainH);
+                grad.addColorStop(0, 'rgba(56, 139, 253, 0.20)');
+                grad.addColorStop(1, 'rgba(56, 139, 253, 0.02)');
+                ctx.fillStyle = grad;
+                ctx.fill();
+            }
+
             // 均价黄线 (VWAP)
             ctx.beginPath();
             ctx.strokeStyle = '#f1c40f';
             ctx.lineWidth = m.lwMA;
             rawList.forEach((d, idx) => {
-                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+                const x = getX(d.slotIdx);
                 const vwapVal = d.vwap > 0 ? d.vwap : d.price;
-                const y = mainH - ((vwapVal - botP) / (topP - botP)) * mainH;
+                const y = getY(vwapVal);
                 if (idx === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             });
             ctx.stroke();
 
-            // 价格白线
+            // 价格白线 (主走势)
             ctx.beginPath();
             ctx.strokeStyle = '#f0f6fc';
-            ctx.lineWidth = m.mobile ? 2.4 : 1.8;
+            ctx.lineWidth = m.mobile ? 2.2 : 1.8;
             rawList.forEach((d, idx) => {
-                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
-                const y = mainH - ((d.price - botP) / (topP - botP)) * mainH;
+                const x = getX(d.slotIdx);
+                const y = getY(d.price);
                 if (idx === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             });
             ctx.stroke();
 
-            // 成交量副图 (底端止于 volBottom，绝不侵入时间轴)
+            // 最新价呼吸圆点与横向指示线
+            if (rawList.length > 0) {
+                const last = rawList[rawList.length - 1];
+                const lastX = getX(last.slotIdx);
+                const lastY = getY(last.price);
+
+                // 横向指示虚线连到右侧
+                ctx.strokeStyle = last.price >= prePrice ? '#f85149' : '#2ea043';
+                ctx.setLineDash([2, 2]);
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(w, lastY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 呼吸发光圆点
+                ctx.beginPath();
+                ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = last.price >= prePrice ? '#f85149' : '#2ea043';
+                ctx.stroke();
+            }
+
+            // 成交量副图 (基于固定时间槽位，恒定精致宽度，底端止于 volBottom)
             const maxVol = Math.max(...rawList.map(d => d.vol)) || 1;
-            const barW = Math.max(m.mobile ? 1.5 : 1, (w / rawList.length) - 1);
-            rawList.forEach((d, idx) => {
-                const x = (idx / (rawList.length - 1)) * (w - 10) + 5;
+            const barW = Math.max(1, Math.min(3.5, (availW / totalM) * 0.85));
+            rawList.forEach(d => {
+                const x = getX(d.slotIdx);
                 const bH = (d.vol / maxVol) * volH;
                 ctx.fillStyle = d.price >= prePrice ? '#f85149' : '#2ea043';
-                ctx.fillRect(x - barW/2, volBottom - bH, barW, bH);
+                ctx.fillRect(x - barW / 2, volBottom - bH, barW, bH);
             });
 
-            // 时间轴文字 (清晰横排)
-            if (rawList.length > 0) {
-                ctx.fillStyle = '#8b9db7';
-                ctx.font = FONT;
-                ctx.textAlign = 'left';
-                ctx.fillText(rawList[0].time || '09:00', 8, chartAvailableH + 15);
-                ctx.textAlign = 'center';
-                const midIdx = Math.floor(rawList.length / 2);
-                ctx.fillText(rawList[midIdx].time || '11:30', w / 2, chartAvailableH + 15);
-                ctx.textAlign = 'right';
-                ctx.fillText(rawList[rawList.length - 1].time || '15:00', w - 8, chartAvailableH + 15);
-            }
+            // 缓存给鼠标悬停/触控详情联动
+            activeTrendData = {
+                rawList,
+                sessionConfig,
+                availW,
+                padL,
+                prePrice
+            };
 
             return rawList.length;
         }
