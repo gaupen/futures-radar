@@ -4146,8 +4146,7 @@
             const quote = allPhysicalQuotes.find(q => q.secid === secid) || focusQuotes.find(q => q.secid === secid) || externalQuotesMap[secid];
             if (!quote) return;
 
-            // 切换合约/标的时，彻底清空上一标的的图表缓存与昨结基准价，严防跨标的价格污染
-            cachedTrendOfficialPrePrice = 0;
+            // 切换合约/标的时，彻底清空上一标的的图表数据实体，生命周期随标的重新生成
             cachedTrendFullBars = [];
             cachedTrendSymbol = '';
             cachedFullKlines = [];
@@ -4226,7 +4225,6 @@
             cachedFullKlines = [];
             cachedTrendFullBars = [];
             cachedTrendSymbol = '';
-            cachedTrendOfficialPrePrice = 0;
             overviewDragState = null;
             mouseDragState = null;
             trendOverviewRect = null;
@@ -4361,9 +4359,8 @@
         }
 
         let activeTrendData = null;
-        let cachedTrendFullBars = [];      // 缓存当前合约全量 1 分钟线 (最高 1500 根)
+        let cachedTrendFullBars = [];      // 缓存当前合约全量 1 分钟线 (内含 .preSettlement 权威基准昨结)
         let cachedTrendSymbol = '';        // 当前缓存的品种代码
-        let cachedTrendOfficialPrePrice = 0; // 交易所官方前结算基准价
         let trendViewStartRatio = 0.60;    // 视口起始比例 (0.0 ~ 1.0)
         let trendViewEndRatio = 1.00;      // 视口结束比例 (0.0 ~ 1.0)
         let trendOverviewRect = null;      // Trend Overview 几何区域与视口像素位置
@@ -5296,16 +5293,16 @@
         // 多日 1 分钟全量数据高精加载路由中心 (主力通道：东财官方 5 日分时含交易所官方 VWAP；备用通道：新浪)
         async function loadMultiDayTrendBars(secid, symbol) {
             let list = [];
+            let officialPrePrice = 0;
             const quote = activeModalQuote;
             const marketType = quote ? quote.marketType : 'CN_FUTURES';
             const eastSecid = getInstrumentEastSecId(quote, secid);
 
-            // 彻底清空并重置上一标的昨结，先以当前标的基准昨结/昨收初始化兜底
-            cachedTrendOfficialPrePrice = 0;
+            // 预设默认基准昨结 (以当前标的独立行情报价为初值，局部变量严格自闭环，绝无任何跨标的污染)
             if (quote && quote.prevSettle > 0) {
-                cachedTrendOfficialPrePrice = quote.prevSettle;
+                officialPrePrice = quote.prevSettle;
             } else if (quote && quote.price > 0 && typeof quote.change === 'number') {
-                cachedTrendOfficialPrePrice = quote.price - quote.change;
+                officialPrePrice = quote.price - quote.change;
             }
 
             // ==========================================
@@ -5317,7 +5314,7 @@
                     const emRes = await loadEastMoney5DayTrends(eastSecid);
                     if (emRes && emRes.bars && emRes.bars.length > 0) {
                         if (emRes.preSettlement > 0) {
-                            cachedTrendOfficialPrePrice = emRes.preSettlement;
+                            officialPrePrice = emRes.preSettlement;
                         }
                         list = emRes.bars;
                         console.log(`[Router] Successfully loaded ${list.length} 5-day bars via EastMoney Primary Channel (${eastSecid})`);
@@ -5423,7 +5420,7 @@
                             });
                             if (parsedBars.length > 0) {
                                 list = parsedBars;
-                                if (officialPreClose > 0) cachedTrendOfficialPrePrice = officialPreClose;
+                                if (officialPreClose > 0) officialPrePrice = officialPreClose;
                             }
                         }
                     } catch (e) {
@@ -5469,7 +5466,7 @@
                             });
                             if (allBars.length > 0) {
                                 list = allBars;
-                                if (lastPreSettle > 0) cachedTrendOfficialPrePrice = lastPreSettle;
+                                if (lastPreSettle > 0) officialPrePrice = lastPreSettle;
                             }
                         }
                     } catch (e) {
@@ -5532,6 +5529,9 @@
                 });
             }
 
+            // 将权威基准昨结/昨收直接封装在返回的数据集载荷上 (Data Payload Encapsulation)
+            // 彻底告别全局变量污染，生命周期完全与当前合约数据实体绑定 (C++ RAII 思想)
+            list.preSettlement = officialPrePrice;
             return list;
         }
 
@@ -5659,16 +5659,18 @@
                 b._x = getBarX(b.uIdx);
             });
 
-            // 3. 价格极值与基准线判断 (当视口涵盖最新价及今日未走时段时，保持昨结基准居中)
+            // 3. 价格极值与基准线判断 (严格从当前合约数据集自身读取封装的 preSettlement，杜绝全局脏状态)
             const isAtLatest = (vEnd >= N_data - 1);
             let prePrice = 0;
-            if (cachedTrendOfficialPrePrice && cachedTrendOfficialPrePrice > 0) {
-                prePrice = cachedTrendOfficialPrePrice;
+            if (cachedTrendFullBars && cachedTrendFullBars.preSettlement > 0) {
+                prePrice = cachedTrendFullBars.preSettlement;
+            } else if (activeModalQuote && activeModalQuote.prevSettle > 0) {
+                prePrice = activeModalQuote.prevSettle;
             } else if (activeModalQuote && activeModalQuote.price > 0 && typeof activeModalQuote.change === 'number') {
                 prePrice = activeModalQuote.price - activeModalQuote.change;
             }
             if (!prePrice || prePrice <= 0) {
-                prePrice = (activeModalQuote && activeModalQuote.prevSettle > 0) ? activeModalQuote.prevSettle : visibleBars[0].price;
+                prePrice = visibleBars[0].price;
             }
 
             const prices = visibleBars.map(b => b.price);
