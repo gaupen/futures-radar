@@ -436,84 +436,95 @@ var index_default = {
       const domText = domResp.ok ? await domResp.text() : "";
       const networkWallMs = performance.now() - fetchStart;
 
-      // 2. CPU 计算测试阶段 A：解析并严格清洗 51 个内盘合约数据
+      // 2. CPU 计算测试阶段 A：解析并严格清洗 51 个内盘合约数据 (重复 50 次以击穿 V8 计时粗化限制，测出真实微秒级开销)
+      const ITERATIONS = 50;
       const cpuAStart = performance.now();
-      const sanitizedDomestic = [];
-      const domLines = domText.split("\n");
-      for (const line of domLines) {
-        const m = line.match(/hq_str_(nf_\w+)=\"([^\"]+)\"/);
-        if (!m) continue;
-        const sym = m[1];
-        const parts = m[2].split(",");
-        if (parts.length < 15) continue;
-        const price = parseFloat(parts[8]) || 0;
-        const prevSettle = parseFloat(parts[10]) || 0;
-        const vol = parseInt(parts[14]) || 0;
-        if (price <= 0) continue; // 严格清洗
-        const change = prevSettle > 0 ? (price - prevSettle) : 0;
-        const changePercent = prevSettle > 0 ? (change / prevSettle) * 100 : 0;
-        sanitizedDomestic.push({
-          sym,
-          name: parts[0],
-          price,
-          prevSettle,
-          vol,
-          open: parseFloat(parts[2]) || 0,
-          high: parseFloat(parts[3]) || 0,
-          low: parseFloat(parts[4]) || 0,
-          change: parseFloat(change.toFixed(2)),
-          changePct: parseFloat(changePercent.toFixed(2))
-        });
+      let sanitizedDomestic = [];
+      for (let it = 0; it < ITERATIONS; it++) {
+        sanitizedDomestic = [];
+        const domLines = domText.split("\n");
+        for (const line of domLines) {
+          const m = line.match(/hq_str_(nf_\w+)=\"([^\"]+)\"/);
+          if (!m) continue;
+          const sym = m[1];
+          const parts = m[2].split(",");
+          if (parts.length < 15) continue;
+          const price = parseFloat(parts[8]) || 0;
+          const prevSettle = parseFloat(parts[10]) || 0;
+          const vol = parseInt(parts[14]) || 0;
+          if (price <= 0) continue; // 严格清洗
+          const change = prevSettle > 0 ? (price - prevSettle) : 0;
+          const changePercent = prevSettle > 0 ? (change / prevSettle) * 100 : 0;
+          sanitizedDomestic.push({
+            sym,
+            name: parts[0],
+            price,
+            prevSettle,
+            vol,
+            open: parseFloat(parts[2]) || 0,
+            high: parseFloat(parts[3]) || 0,
+            low: parseFloat(parts[4]) || 0,
+            change: parseFloat(change.toFixed(2)),
+            changePct: parseFloat(changePercent.toFixed(2))
+          });
+        }
       }
-      const cpuAMs = performance.now() - cpuAStart;
+      const cpuAMs = (performance.now() - cpuAStart) / ITERATIONS;
       totalCpuMs += cpuAMs;
 
-      // 3. CPU 计算测试阶段 B：解析、验证、清洗外盘 1 分钟全量线 (含交易所 VWAP、单调时间校验)
+      // 3. CPU 计算测试阶段 B：解析、验证、清洗外盘 1 分钟全量线 (重复 50 次测出真实单次耗时)
       const cpuBStart = performance.now();
-      const sanitizedForeign = {};
+      let sanitizedForeign = {};
       let totalForeignBars = 0;
-      foreignSymbols.forEach((sym, idx) => {
-        const rawText = foreignResps[idx] || "";
-        const m = rawText.match(/\(\s*(\{[\s\S]*\})\s*\)/);
-        if (!m) return;
-        try {
-          const json = JSON.parse(m[1]);
-          const minLine = json.minLine_1d || [];
-          const cleanBars = [];
-          for (let i = 0; i < minLine.length; i++) {
-            const bar = minLine[i];
-            if (!bar || bar.length < 5) continue;
-            const p = parseFloat(i === 0 ? bar[5] : bar[1]);
-            const a = parseFloat(i === 0 ? bar[8] : bar[4]);
-            if (isNaN(p) || p <= 0) continue; // 剔除异常价格
-            cleanBars.push({
-              t: i === 0 ? bar[9] : bar[5],
-              p,
-              a: isNaN(a) || a <= 0 ? p : a
-            });
-          }
-          if (cleanBars.length > 0) {
-            sanitizedForeign[sym] = cleanBars;
-            totalForeignBars += cleanBars.length;
-          }
-        } catch (e) {}
-      });
-      const cpuBMs = performance.now() - cpuBStart;
+      for (let it = 0; it < ITERATIONS; it++) {
+        sanitizedForeign = {};
+        totalForeignBars = 0;
+        foreignSymbols.forEach((sym, idx) => {
+          const rawText = foreignResps[idx] || "";
+          const m = rawText.match(/\(\s*(\{[\s\S]*\})\s*\)/);
+          if (!m) return;
+          try {
+            const json = JSON.parse(m[1]);
+            const minLine = json.minLine_1d || [];
+            const cleanBars = [];
+            for (let i = 0; i < minLine.length; i++) {
+              const bar = minLine[i];
+              if (!bar || bar.length < 5) continue;
+              const p = parseFloat(i === 0 ? bar[5] : bar[1]);
+              const a = parseFloat(i === 0 ? bar[8] : bar[4]);
+              if (isNaN(p) || p <= 0) continue; // 剔除异常价格
+              cleanBars.push({
+                t: i === 0 ? bar[9] : bar[5],
+                p,
+                a: isNaN(a) || a <= 0 ? p : a
+              });
+            }
+            if (cleanBars.length > 0) {
+              sanitizedForeign[sym] = cleanBars;
+              totalForeignBars += cleanBars.length;
+            }
+          } catch (e) {}
+        });
+      }
+      const cpuBMs = (performance.now() - cpuBStart) / ITERATIONS;
       totalCpuMs += cpuBMs;
 
       // 4. CPU 计算测试阶段 C：数据结构打包、序列化压缩
       const cpuCStart = performance.now();
-      const packedArchive = {
-        benchmark: true,
-        generatedAt: new Date().toISOString(),
-        domesticCount: sanitizedDomestic.length,
-        foreignContractCount: Object.keys(sanitizedForeign).length,
-        foreignTotalBars: totalForeignBars,
-        domestic: sanitizedDomestic,
-        foreign: sanitizedForeign
-      };
-      const serializedJson = JSON.stringify(packedArchive);
-      const cpuCMs = performance.now() - cpuCStart;
+      let serializedJson = "";
+      for (let it = 0; it < ITERATIONS; it++) {
+        const packedArchive = {
+          benchmark: true,
+          generatedAt: new Date().toISOString(),
+          domesticCount: sanitizedDomestic.length,
+          foreignContractCount: Object.keys(sanitizedForeign).length,
+          foreignTotalBars: totalForeignBars,
+          domestic: sanitizedDomestic,
+          foreign: sanitizedForeign
+        };
+        serializedJson = JSON.stringify(packedArchive);
+      }
+      const cpuCMs = (performance.now() - cpuCStart) / ITERATIONS;
       totalCpuMs += cpuCMs;
 
       const totalWallMs = performance.now() - overallStart;
