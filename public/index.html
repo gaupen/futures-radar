@@ -5710,6 +5710,51 @@
                 console.error('Draw Kline error:', e);
             }
 
+            // 动态融合今日实时盘中日 K 柱 (无论美股、外盘还是国内期货，确保日K线绝不缺少当天正在交易的活跃蜡烛柱)
+            if (klt === '101' && activeModalQuote && activeModalQuote.price > 0 && cachedFullKlines.length > 0) {
+                const now = new Date();
+                const yyyy = now.getFullYear();
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                const dd = String(now.getDate()).padStart(2, '0');
+                let activeTradingDay = `${yyyy}-${mm}-${dd}`;
+
+                if (marketType === 'US_STOCK') {
+                    // 美股交易日换算为美东时间当地日期
+                    try {
+                        const usDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(now);
+                        if (usDateStr) activeTradingDay = usDateStr;
+                    } catch(e) {}
+                }
+
+                const lastK = cachedFullKlines[cachedFullKlines.length - 1];
+                const liveOpen = (activeModalQuote.open > 0) ? activeModalQuote.open : activeModalQuote.price;
+                const liveHigh = Math.max(activeModalQuote.high || 0, activeModalQuote.price, liveOpen);
+                const liveLow = (activeModalQuote.low > 0) ? Math.min(activeModalQuote.low, activeModalQuote.price, liveOpen) : Math.min(liveOpen, activeModalQuote.price);
+                const liveClose = activeModalQuote.price;
+                const liveVol = activeModalQuote.vol || 0;
+
+                if (lastK.date === activeTradingDay) {
+                    // 历史数据中已有当天记录：用盘中最新高开低收动态覆盖刷新
+                    lastK.open = liveOpen;
+                    lastK.high = Math.max(lastK.high, liveHigh);
+                    lastK.low = Math.min(lastK.low, liveLow);
+                    lastK.close = liveClose;
+                    lastK.vol = Math.max(lastK.vol, liveVol);
+                    lastK.isDynamic = true;
+                } else if (activeTradingDay > lastK.date) {
+                    // 历史日线库尚未盘后结账收盘入库：动态在末尾追加今日实时活跃日 K 柱！
+                    cachedFullKlines.push({
+                        date: activeTradingDay,
+                        open: liveOpen,
+                        high: liveHigh,
+                        low: liveLow,
+                        close: liveClose,
+                        vol: liveVol,
+                        isDynamic: true
+                    });
+                }
+            }
+
             if (!cachedFullKlines || cachedFullKlines.length === 0) {
                 ctx.fillStyle = '#8b9db7';
                 ctx.font = '14px sans-serif';
