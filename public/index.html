@@ -969,6 +969,182 @@
             opacity: 1;
             transform: translate(-50%, 0);
         }
+
+        /* ==================== 多市场搜索与拾取浮层 ==================== */
+        .tab-search-btn {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.12), rgba(187, 134, 252, 0.12));
+            border: 1px solid rgba(88, 166, 255, 0.35);
+            color: #58a6ff;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .tab-search-btn:hover {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.22), rgba(187, 134, 252, 0.22));
+            border-color: #58a6ff;
+            transform: translateY(-1px);
+        }
+        .search-modal-content {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 14px;
+            width: 94%;
+            max-width: 640px;
+            max-height: 82vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
+            animation: modalScaleIn 0.18s ease-out;
+        }
+        .search-modal-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-bottom: 1px solid #21262d;
+            background: #161b22;
+        }
+        .search-input-wrapper {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        .search-input-icon {
+            position: absolute;
+            left: 12px;
+            color: #8b949e;
+            font-size: 14px;
+            pointer-events: none;
+        }
+        #market-search-input {
+            width: 100%;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 9px 34px 9px 34px;
+            color: #f0f6fc;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        #market-search-input:focus {
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+        }
+        .search-input-clear {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 4px;
+            display: none;
+        }
+        .search-modal-close {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            font-size: 12px;
+            padding: 7px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .search-category-tabs {
+            display: flex;
+            gap: 8px;
+            padding: 10px 16px;
+            background: #161b22;
+            border-bottom: 1px solid #21262d;
+            overflow-x: auto;
+        }
+        .category-pill {
+            background: #21262d;
+            border: 1px solid transparent;
+            color: #8b949e;
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+        }
+        .category-pill.active {
+            background: rgba(88, 166, 255, 0.2);
+            border-color: #58a6ff;
+            color: #58a6ff;
+            font-weight: 600;
+        }
+        .search-results-list {
+            padding: 12px 16px;
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+        .search-result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 10px 14px;
+            transition: all 0.15s ease;
+        }
+        .search-result-item:hover {
+            border-color: #388bfd;
+            background: #1c2128;
+        }
+        .search-item-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .search-item-name {
+            font-weight: 600;
+            color: #f0f6fc;
+            font-size: 14px;
+        }
+        .search-item-code {
+            font-family: var(--font-mono);
+            color: #8b949e;
+            font-size: 12px;
+        }
+        .search-item-fav-btn {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            font-size: 12px;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .search-item-fav-btn:hover {
+            border-color: #58a6ff;
+            color: #58a6ff;
+        }
+        .search-item-fav-btn.is-fav {
+            background: rgba(235, 179, 56, 0.2);
+            border-color: #e3b341;
+            color: #e3b341;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -1072,11 +1248,36 @@
         <div class="dual-tab-group">
             <button class="tab-btn active" id="tab-abs" onclick="switchMode('abs')">🔥 异动榜</button>
             <button class="tab-btn" id="tab-custom" onclick="switchMode('custom')">⭐ 我的自选</button>
+            <button class="tab-search-btn" id="btn-search-modal" onclick="openSearchModal()" title="搜索并添加多市场品种 (外盘/美股/港股/内盘)">🔍 搜代码/加自选</button>
         </div>
     </div>
 
     <!-- 行情卡片容器 -->
     <main id="cards-container" class="cards-grid"></main>
+
+    <!-- 🔍 多市场资产搜索与添加 Modal -->
+    <div id="search-modal" class="modal-overlay" onclick="closeSearchModalOnBackdrop(event)">
+        <div class="search-modal-content" onclick="event.stopPropagation()">
+            <div class="search-modal-header">
+                <div class="search-input-wrapper">
+                    <span class="search-input-icon">🔍</span>
+                    <input type="text" id="market-search-input" placeholder="输入代码/拼音/中文 (如: 原油, CL, 黄金, GC, NVDA, 苹果, 腾讯, 700)..." oninput="onSearchInputChange()" autocomplete="off" />
+                    <button class="search-input-clear" id="search-clear-btn" onclick="clearSearchInput()">✕</button>
+                </div>
+                <button class="search-modal-close" onclick="closeSearchModal()">关闭</button>
+            </div>
+            
+            <div class="search-category-tabs">
+                <button class="category-pill active" data-cat="all" onclick="switchSearchCategory('all')">全部</button>
+                <button class="category-pill" data-cat="global" onclick="switchSearchCategory('global')">🌍 热门外盘</button>
+                <button class="category-pill" data-cat="us" onclick="switchSearchCategory('us')">🇺🇸 美股七姐妹</button>
+                <button class="category-pill" data-cat="hk" onclick="switchSearchCategory('hk')">🇭🇰 恒生科技</button>
+                <button class="category-pill" data-cat="cn" onclick="switchSearchCategory('cn')">🇨🇳 内盘主力</button>
+            </div>
+
+            <div class="search-results-list" id="search-results-list"></div>
+        </div>
+    </div>
 
     <footer style="text-align: center; color: var(--text-muted); font-size: 11px; margin-top: auto; padding: 16px 10px; opacity: 0.65;">
         上次刷新: <span id="last-update-time" style="font-family:var(--font-mono); color:var(--text-secondary);">--:--:--</span>
@@ -1131,6 +1332,539 @@
     </div>
 
     <script>
+        // ==================== 多市场统一底座 (Market Registry) ====================
+        const MARKETS = {
+            CN_FUTURES: {
+                id: 'CN_FUTURES',
+                name: '国内商品期货',
+                currency: '¥',
+                timezone: 'Asia/Shanghai',
+                prefix: 'nf_'
+            },
+            GLOBAL_FUTURES: {
+                id: 'GLOBAL_FUTURES',
+                name: '外盘商品期货',
+                currency: '$',
+                timezone: 'UTC',
+                prefix: 'hf_'
+            },
+            US_STOCK: {
+                id: 'US_STOCK',
+                name: '美股市场',
+                currency: '$',
+                timezone: 'America/New_York',
+                prefix: 'gb_'
+            },
+            HK_STOCK: {
+                id: 'HK_STOCK',
+                name: '港股市场',
+                currency: 'HK$',
+                timezone: 'Asia/Hong_Kong',
+                prefix: 'rt_hk'
+            }
+        };
+
+        // 精选外盘/美股/港股资产索引库 (用于智能模糊搜索与快速加入自选)
+        const ASSET_CATALOG = [
+            // === 🌍 外盘商品期货 ===
+            { id: 'hf_CL', symbol: 'CL', name: 'WTI纽约原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyuanyou nyse wti cl', category: 'global' },
+            { id: 'hf_OIL', symbol: 'OIL', name: '布伦特原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'bulunte brent oil', category: 'global' },
+            { id: 'hf_GC', symbol: 'GC', name: 'COMEX纽约黄金', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'huangjin gold gc comex', category: 'global' },
+            { id: 'hf_SI', symbol: 'SI', name: 'COMEX纽约白银', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'baiyin silver si', category: 'global' },
+            { id: 'hf_CAD', symbol: 'CAD', name: 'LME伦敦铜', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'lunduntong copper lme cad', category: 'global' },
+            { id: 'hf_S', symbol: 'S', name: 'CBOT美大豆', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meidadou soybean s cbot', category: 'global' },
+            { id: 'hf_C', symbol: 'C', name: 'CBOT美玉米', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyumi corn c cbot', category: 'global' },
+            { id: 'hf_NG', symbol: 'NG', name: 'NYMEX天然气', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'tianranqi gas ng', category: 'global' },
+
+            // === 🇺🇸 美股七姐妹 & 标杆指数 ===
+            { id: 'gb_nvda', symbol: 'NVDA', name: '英伟达 (NVIDIA)', market: 'US_STOCK', currency: '$', pinyin: 'yingweida nvda', category: 'us' },
+            { id: 'gb_aapl', symbol: 'AAPL', name: '苹果公司 (Apple)', market: 'US_STOCK', currency: '$', pinyin: 'pingguo apple aapl', category: 'us' },
+            { id: 'gb_msft', symbol: 'MSFT', name: '微软 (Microsoft)', market: 'US_STOCK', currency: '$', pinyin: 'weiruan msft', category: 'us' },
+            { id: 'gb_googl', symbol: 'GOOGL', name: '谷歌 Alphabet', market: 'US_STOCK', currency: '$', pinyin: 'guge google googl', category: 'us' },
+            { id: 'gb_amzn', symbol: 'AMZN', name: '亚马逊 (Amazon)', market: 'US_STOCK', currency: '$', pinyin: 'yamaxun amzn', category: 'us' },
+            { id: 'gb_tsla', symbol: 'TSLA', name: '特斯拉 (Tesla)', market: 'US_STOCK', currency: '$', pinyin: 'tesila tsla', category: 'us' },
+            { id: 'gb_meta', symbol: 'META', name: 'Meta (Facebook)', market: 'US_STOCK', currency: '$', pinyin: 'meta facebook', category: 'us' },
+            { id: 'gb_qqq', symbol: 'QQQ', name: '纳斯达克100 ETF', market: 'US_STOCK', currency: '$', pinyin: 'nasidake qqq', category: 'us' },
+            { id: 'gb_spy', symbol: 'SPY', name: '标普500 ETF (SPY)', market: 'US_STOCK', currency: '$', pinyin: 'biaopu spy', category: 'us' },
+
+            // === 🇭🇰 恒生科技与旗舰港股 ===
+            { id: 'rt_hk00700', symbol: '00700', name: '腾讯控股', market: 'HK_STOCK', currency: 'HK$', pinyin: 'tengxun 700 00700 tencent', category: 'hk' },
+            { id: 'rt_hk09988', symbol: '09988', name: '阿里巴巴-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'alibaba ali 9988 09988', category: 'hk' },
+            { id: 'rt_hk03690', symbol: '03690', name: '美团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'meituan 3690 03690', category: 'hk' },
+            { id: 'rt_hk01810', symbol: '01810', name: '小米集团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'xiaomi 1810 01810', category: 'hk' },
+            { id: 'rt_hk01211', symbol: '01211', name: '比亚迪股份', market: 'HK_STOCK', currency: 'HK$', pinyin: 'biyadi byd 1211 01211', category: 'hk' },
+            { id: 'rt_hk00981', symbol: '00981', name: '中芯国际', market: 'HK_STOCK', currency: 'HK$', pinyin: 'zhongxin smic 981 00981', category: 'hk' }
+        ];
+
+        // 统一外盘期货行情解析器
+        function parseGlobalFuturesQuote(sym, line, meta) {
+            const parts = line.split(',');
+            if (parts.length < 13) return null;
+            const price = parseFloat(parts[0]) || 0;
+            const high = parseFloat(parts[4]) || 0;
+            const low = parseFloat(parts[5]) || 0;
+            const prevClose = parseFloat(parts[7]) || 0;
+            const open = parseFloat(parts[8]) || 0;
+            const name = parts[13] || (meta ? meta.name : sym);
+            if (price <= 0) return null;
+            const change = prevClose > 0 ? (price - prevClose) : 0;
+            const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+            return {
+                secid: sym,
+                code: sym.replace('hf_', ''),
+                name: name,
+                marketType: 'GLOBAL_FUTURES',
+                currency: '$',
+                price: price,
+                change: parseFloat(change.toFixed(3)),
+                changePercent: parseFloat(changePercent.toFixed(2)),
+                high: high,
+                low: low,
+                open: open,
+                prevSettle: prevClose,
+                vol: parseInt(parts[9]) || 0,
+                amount: 0,
+                tradeTime: Date.now(),
+                isLiquid: true
+            };
+        }
+
+        // 统一美股行情解析器
+        function parseUsStockQuote(sym, line, meta) {
+            const parts = line.split(',');
+            if (parts.length < 11) return null;
+            const name = parts[0] || (meta ? meta.name : sym);
+            const price = parseFloat(parts[1]) || 0;
+            const changePercent = parseFloat(parts[2]) || 0;
+            const change = parseFloat(parts[4]) || 0;
+            const open = parseFloat(parts[5]) || 0;
+            const high = parseFloat(parts[6]) || 0;
+            const low = parseFloat(parts[7]) || 0;
+            const vol = parseInt(parts[10]) || 0;
+            const prevClose = parseFloat(parts[26]) || (price - change);
+            if (price <= 0) return null;
+            return {
+                secid: sym,
+                code: sym.replace('gb_', '').toUpperCase(),
+                name: name,
+                marketType: 'US_STOCK',
+                currency: '$',
+                price: price,
+                change: parseFloat(change.toFixed(2)),
+                changePercent: parseFloat(changePercent.toFixed(2)),
+                high: high,
+                low: low,
+                open: open,
+                prevSettle: prevClose,
+                vol: vol,
+                amount: parseFloat(parts[12]) || 0,
+                tradeTime: Date.now(),
+                isLiquid: true
+            };
+        }
+
+        // 统一港股行情解析器
+        function parseHkStockQuote(sym, line, meta) {
+            const parts = line.split(',');
+            if (parts.length < 13) return null;
+            const name = parts[1] || parts[0] || (meta ? meta.name : sym);
+            const open = parseFloat(parts[2]) || 0;
+            const prevClose = parseFloat(parts[3]) || 0;
+            const high = parseFloat(parts[4]) || 0;
+            const low = parseFloat(parts[5]) || 0;
+            const price = parseFloat(parts[6]) || 0;
+            const change = parseFloat(parts[7]) || 0;
+            const changePercent = parseFloat(parts[8]) || 0;
+            const vol = parseInt(parts[12]) || 0;
+            const amount = parseFloat(parts[11]) || 0;
+            if (price <= 0) return null;
+            return {
+                secid: sym,
+                code: sym.replace('rt_hk', ''),
+                name: name,
+                marketType: 'HK_STOCK',
+                currency: 'HK$',
+                price: price,
+                change: parseFloat(change.toFixed(2)),
+                changePercent: parseFloat(changePercent.toFixed(2)),
+                high: high,
+                low: low,
+                open: open,
+                prevSettle: prevClose,
+                vol: vol,
+                amount: amount,
+                tradeTime: Date.now(),
+                isLiquid: true
+            };
+        }
+
+        // ==================== 多市场外部资产行情缓存与拉取 ====================
+        let externalQuotesMap = {};
+
+        // 批量拉取自选列表或指定资产列表中所有外盘/美股/港股行情
+        async function fetchMultiMarketWatchlistQuotes(specificSymbols = null) {
+            let targetSymbols = [];
+            if (Array.isArray(specificSymbols) && specificSymbols.length > 0) {
+                targetSymbols = specificSymbols;
+            } else {
+                const set = new Set();
+                (customWatchlist || []).forEach(c => {
+                    if (!c) return;
+                    const low = String(c).toLowerCase().trim();
+                    const asset = ASSET_CATALOG.find(a => a.id.toLowerCase() === low || a.symbol.toLowerCase() === low);
+                    if (asset) {
+                        set.add(asset.id);
+                    } else if (low.startsWith('hf_') || low.startsWith('gb_') || low.startsWith('rt_hk')) {
+                        set.add(c);
+                    }
+                });
+                targetSymbols = Array.from(set);
+            }
+
+            if (targetSymbols.length === 0) return externalQuotesMap;
+
+            try {
+                const rawMap = await loadSinaBatchScript(targetSymbols);
+                for (const [sym, line] of Object.entries(rawMap)) {
+                    if (!line || typeof line !== 'string') continue;
+                    const meta = ASSET_CATALOG.find(a => a.id.toLowerCase() === sym.toLowerCase());
+                    let quote = null;
+                    if (sym.startsWith('hf_')) {
+                        quote = parseGlobalFuturesQuote(sym, line, meta);
+                    } else if (sym.startsWith('gb_')) {
+                        quote = parseUsStockQuote(sym, line, meta);
+                    } else if (sym.startsWith('rt_hk')) {
+                        quote = parseHkStockQuote(sym, line, meta);
+                    }
+                    if (quote) {
+                        if (meta) {
+                            quote.category = meta.category;
+                            quote.pinyin = meta.pinyin;
+                        }
+                        externalQuotesMap[sym] = quote;
+                    }
+                }
+            } catch (e) {
+                console.warn('[multi-market] 拉取外部市场行情异常:', e);
+            }
+            return externalQuotesMap;
+        }
+
+        // 绘制全球资产详情卡 (外盘期货/美股/港股，优雅终端风)
+        function drawExternalAssetPlaceholder(ctx, w, h, quote) {
+            ctx.fillStyle = '#0f141c';
+            ctx.fillRect(0, 0, w, h);
+
+            // 绘制网格背景
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.lineWidth = 1;
+            const gridCols = 8;
+            const gridRows = 5;
+            for (let i = 1; i < gridCols; i++) {
+                const x = (w / gridCols) * i;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+            for (let j = 1; j < gridRows; j++) {
+                const y = (h / gridRows) * j;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            }
+
+            const isUp = quote.change > 0;
+            const isDown = quote.change < 0;
+            const priceColor = isUp ? '#0ecb81' : (isDown ? '#f6465d' : '#848e9c');
+            const sign = isUp ? '+' : '';
+            const curr = quote.currency || '$';
+            const digits = quote.marketType === 'GLOBAL_FUTURES' ? 3 : 2;
+
+            // 头部标题卡
+            const marketTitle = quote.marketType === 'US_STOCK' ? '🇺🇸 美股标杆市场' : 
+                               (quote.marketType === 'HK_STOCK' ? '🇭🇰 港股旗舰市场' : '🌍 全球外盘期货');
+
+            ctx.fillStyle = '#58a6ff';
+            ctx.font = '600 13px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(marketTitle, w / 2, Math.round(h * 0.22));
+
+            // 主行情价格
+            ctx.fillStyle = priceColor;
+            ctx.font = `700 ${w < 600 ? 36 : 48}px "JetBrains Mono", Consolas, monospace`;
+            ctx.fillText(`${curr} ${quote.price.toFixed(digits)}`, w / 2, Math.round(h * 0.38));
+
+            // 涨跌幅度
+            ctx.fillStyle = priceColor;
+            ctx.font = '600 16px "JetBrains Mono", Consolas, monospace';
+            ctx.fillText(`${sign}${quote.change.toFixed(digits)}  (${sign}${quote.changePercent.toFixed(2)}%)`, w / 2, Math.round(h * 0.46));
+
+            // 四格指标栏
+            const boxY = Math.round(h * 0.56);
+            const boxH = 64;
+            const boxW = Math.min(w - 40, 520);
+            const boxX = Math.round((w - boxW) / 2);
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(boxX, boxY, boxW, boxH, 8) : ctx.rect(boxX, boxY, boxW, boxH);
+            ctx.fill();
+            ctx.stroke();
+
+            const items = [
+                { label: '开盘', val: quote.open > 0 ? quote.open.toFixed(digits) : '--' },
+                { label: '最高', val: quote.high > 0 ? quote.high.toFixed(digits) : '--' },
+                { label: '最低', val: quote.low > 0 ? quote.low.toFixed(digits) : '--' },
+                { label: quote.marketType.includes('STOCK') ? '昨收' : '昨结', val: quote.prevSettle > 0 ? quote.prevSettle.toFixed(digits) : '--' }
+            ];
+
+            const colW = boxW / 4;
+            items.forEach((it, idx) => {
+                const cx = boxX + colW * idx + colW / 2;
+                ctx.fillStyle = '#848e9c';
+                ctx.font = '11px system-ui, sans-serif';
+                ctx.fillText(it.label, cx, boxY + 24);
+
+                ctx.fillStyle = '#e6edf3';
+                ctx.font = '600 13px "JetBrains Mono", Consolas, monospace';
+                ctx.fillText(it.val, cx, boxY + 48);
+            });
+
+            // 底部提示
+            ctx.fillStyle = 'rgba(132, 142, 156, 0.7)';
+            ctx.font = '12px system-ui, sans-serif';
+            ctx.fillText('⚡ 新浪财经直连极速行情 · 每 5 秒毫秒级自选轮询 · 历史分时/日K深度引擎接入中', w / 2, Math.round(h * 0.82));
+        }
+
+        // ==================== 智能模糊搜索与资产拾取 Modal ====================
+        let currentSearchCategory = 'all';
+
+        function openSearchModal() {
+            const modal = document.getElementById('search-modal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+
+            // 预热拉取外部精选资产行情 (一次批量并发拉取)
+            fetchMultiMarketWatchlistQuotes(ASSET_CATALOG.map(a => a.id)).then(() => {
+                renderSearchResults();
+            });
+
+            const input = document.getElementById('market-search-input');
+            if (input) {
+                input.focus();
+            }
+            renderSearchResults();
+        }
+
+        function closeSearchModal() {
+            const modal = document.getElementById('search-modal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function closeSearchModalOnBackdrop(e) {
+            if (e.target && e.target.id === 'search-modal') {
+                closeSearchModal();
+            }
+        }
+
+        function clearSearchInput() {
+            const input = document.getElementById('market-search-input');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+            const clearBtn = document.getElementById('search-clear-btn');
+            if (clearBtn) clearBtn.style.display = 'none';
+            renderSearchResults();
+        }
+
+        function onSearchInputChange() {
+            const input = document.getElementById('market-search-input');
+            const clearBtn = document.getElementById('search-clear-btn');
+            const val = input ? input.value.trim() : '';
+            if (clearBtn) {
+                clearBtn.style.display = val.length > 0 ? 'block' : 'none';
+            }
+            renderSearchResults();
+        }
+
+        function switchSearchCategory(cat) {
+            currentSearchCategory = cat;
+            document.querySelectorAll('.search-category-tabs .category-pill').forEach(btn => {
+                if (btn.getAttribute('data-cat') === cat) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+            renderSearchResults();
+        }
+
+        function renderSearchResults() {
+            const listEl = document.getElementById('search-results-list');
+            if (!listEl) return;
+            const input = document.getElementById('market-search-input');
+            const q = input ? input.value.trim().toLowerCase() : '';
+
+            let results = [];
+
+            // 1. 过滤外部精选资产 (外盘、美股、港股)
+            let catalogPool = ASSET_CATALOG;
+            if (currentSearchCategory !== 'all' && currentSearchCategory !== 'cn') {
+                catalogPool = ASSET_CATALOG.filter(a => a.category === currentSearchCategory);
+            }
+
+            if (currentSearchCategory !== 'cn') {
+                catalogPool.forEach(item => {
+                    const matchQ = !q || 
+                        item.symbol.toLowerCase().includes(q) || 
+                        item.name.toLowerCase().includes(q) || 
+                        item.id.toLowerCase().includes(q) ||
+                        (item.pinyin && item.pinyin.toLowerCase().includes(q));
+                    if (matchQ) {
+                        const quote = externalQuotesMap[item.id] || null;
+                        results.push({
+                            id: item.id,
+                            symbol: item.symbol,
+                            name: item.name,
+                            market: item.market,
+                            currency: item.currency,
+                            category: item.category,
+                            quote: quote
+                        });
+                    }
+                });
+            }
+
+            // 2. 若类别为 'all' 或 'cn'，且输入了搜索词或选择了 'cn' 标签
+            if (currentSearchCategory === 'all' || currentSearchCategory === 'cn') {
+                if (q) {
+                    // 在全量国内合约池中模糊检索
+                    const matchedDomestic = allPhysicalQuotes.filter(dq => {
+                        return dq.code.toLowerCase().includes(q) || 
+                               dq.secid.toLowerCase().includes(q) || 
+                               dq.name.toLowerCase().includes(q);
+                    }).slice(0, 15);
+
+                    matchedDomestic.forEach(dq => {
+                        results.push({
+                            id: dq.secid,
+                            symbol: dq.code,
+                            name: dq.name,
+                            market: 'CN_FUTURES',
+                            currency: '¥',
+                            category: 'cn',
+                            quote: dq
+                        });
+                    });
+                } else if (currentSearchCategory === 'cn') {
+                    // 未输词但切到 'cn' 标签：展示前 15 大活跃国内主力合约
+                    const topDomestic = allPhysicalQuotes.slice().sort((a, b) => b.vol - a.vol).slice(0, 15);
+                    topDomestic.forEach(dq => {
+                        results.push({
+                            id: dq.secid,
+                            symbol: dq.code,
+                            name: dq.name,
+                            market: 'CN_FUTURES',
+                            currency: '¥',
+                            category: 'cn',
+                            quote: dq
+                        });
+                    });
+                }
+            }
+
+            if (results.length === 0) {
+                listEl.innerHTML = `
+                    <div style="padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 13px;">
+                        🔍 未找到匹配资产<br>
+                        <span style="font-size: 11px; opacity: 0.7; margin-top: 6px; display: inline-block;">
+                            支持输入代码 (CL/NVDA/700/rb2612)、中文 (原油/黄金/腾讯/苹果) 或拼音
+                        </span>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = results.map(item => {
+                const q = item.quote;
+                const fav = isFavorite(item.id, item.symbol);
+                const favClass = fav ? 'result-fav-btn is-fav' : 'result-fav-btn';
+                const favText = fav ? '✓ 已在自选' : '＋加自选';
+
+                let badgeHtml = '';
+                if (item.market === 'US_STOCK') {
+                    badgeHtml = `<span class="tag-physical" style="background: rgba(56, 139, 253, 0.15); color: #58a6ff; border-color: rgba(56, 139, 253, 0.4);">🇺🇸 美股</span>`;
+                } else if (item.market === 'HK_STOCK') {
+                    badgeHtml = `<span class="tag-physical" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border-color: rgba(236, 72, 153, 0.4);">🇭🇰 港股</span>`;
+                } else if (item.market === 'GLOBAL_FUTURES') {
+                    badgeHtml = `<span class="tag-physical" style="background: rgba(234, 179, 8, 0.15); color: #facc15; border-color: rgba(234, 179, 8, 0.4);">🌍 外盘</span>`;
+                } else {
+                    badgeHtml = `<span class="tag-physical">🇨🇳 内盘</span>`;
+                }
+
+                let priceHtml = '<span class="result-price" style="color:var(--text-muted);">--</span>';
+                if (q && q.price > 0) {
+                    const isUp = q.change > 0;
+                    const isDown = q.change < 0;
+                    const sign = isUp ? '+' : '';
+                    const pCls = isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat';
+                    const bCls = isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge';
+                    const digits = (item.market === 'GLOBAL_FUTURES') ? 3 : (q.price % 1 === 0 ? 0 : 2);
+                    priceHtml = `
+                        <span class="result-price ${pCls}">${item.currency || '¥'} ${q.price.toLocaleString(undefined, {minimumFractionDigits: digits, maximumFractionDigits: digits})}</span>
+                        <span class="result-change ${bCls}">${sign}${q.changePercent.toFixed(2)}%</span>
+                    `;
+                }
+
+                return `
+                    <div class="search-result-item">
+                        <div class="result-info">
+                            <div class="result-header">
+                                <span class="result-name">${item.name}</span>
+                                ${badgeHtml}
+                                <span class="result-code">${item.symbol || item.id}</span>
+                            </div>
+                        </div>
+                        <div class="result-price-group">
+                            ${priceHtml}
+                            <button class="${favClass}" onclick="toggleSearchFav('${item.id}', '${item.symbol}', this)">${favText}</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function toggleSearchFav(id, symbol, btnEl) {
+            toggleFavorite(id, symbol);
+            const fav = isFavorite(id, symbol);
+            if (btnEl) {
+                if (fav) {
+                    btnEl.className = 'result-fav-btn is-fav';
+                    btnEl.textContent = '✓ 已在自选';
+                } else {
+                    btnEl.className = 'result-fav-btn';
+                    btnEl.textContent = '＋加自选';
+                }
+            }
+            if (fav && (id.startsWith('hf_') || id.startsWith('gb_') || id.startsWith('rt_hk'))) {
+                await fetchMultiMarketWatchlistQuotes([id]);
+                renderSearchResults();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const searchModal = document.getElementById('search-modal');
+                if (searchModal && searchModal.style.display === 'flex') {
+                    closeSearchModal();
+                }
+            }
+        });
+
         // ==================== 品种与市场映射 (100% 真实物理合约) ====================
         // ⚠️ 东财 secid 命名规则（2026-10 实测，极易踩坑，勿凭直觉改）：
         //   113 上期所    代码小写 4 位   113.rb2612
@@ -1598,6 +2332,7 @@
                         customWatchlist = json.list;
                         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(customWatchlist)); } catch (e) {}
                         cloudWatchAvailable = true;
+                        await fetchMultiMarketWatchlistQuotes();
                         if (currentMode === 'custom' && isStep1Ready) {
                             filterAndRenderFocusPool();
                         }
@@ -1757,6 +2492,7 @@
             }
             updateDataSourceBanner();
             fetchGlobalWatchlist();
+            fetchMultiMarketWatchlistQuotes();
         }
 
         function saveWatchlist() {
@@ -1824,6 +2560,11 @@
             const activeTab = document.getElementById(`tab-${mode.replace('_', '-')}`);
             if (activeTab) activeTab.classList.add('active');
 
+            if (mode === 'custom') {
+                fetchMultiMarketWatchlistQuotes().then(() => {
+                    filterAndRenderFocusPool();
+                });
+            }
             filterAndRenderFocusPool();
         }
 
@@ -2468,6 +3209,9 @@
                 lastGoodQuotes = allPhysicalQuotes.slice();
                 lastGoodTs = Date.now();
 
+                // 并发拉取多市场自选报价 (外盘/美股/港股)
+                await fetchMultiMarketWatchlistQuotes();
+
                 dataMode = 'live';
                 finishScanPass();
             } catch (err) {
@@ -2512,8 +3256,12 @@
             const t0 = performance.now();
             const symMap = new Map();
             focusQuotes.forEach(q => {
-                const sym = getSinaFuturesSymbolForPool(q);
-                symMap.set(sym, q);
+                if (q.marketType && q.marketType !== 'CN_FUTURES') {
+                    symMap.set(q.secid, q);
+                } else {
+                    const sym = getSinaFuturesSymbolForPool(q);
+                    symMap.set(sym, q);
+                }
             });
             const symbols = Array.from(symMap.keys());
 
@@ -2524,22 +3272,46 @@
                     if (!line || typeof line !== 'string') continue;
                     const target = symMap.get(sym);
                     if (!target) continue;
-                    const parts = line.split(',');
-                    if (parts.length < 15) continue;
-                    const price = parseFloat(parts[8]) || 0;
-                    const prevSettle = parseFloat(parts[10]) || target.prevSettle || 0;
-                    const vol = parseInt(parts[14]) || target.vol || 0;
-                    if (price > 0) {
-                        target.price = price;
-                        target.prevSettle = prevSettle;
-                        target.change = prevSettle > 0 ? (price - prevSettle) : 0;
-                        target.changePercent = prevSettle > 0 ? (target.change / prevSettle) * 100 : 0;
-                        target.vol = vol;
-                        target.high = parseFloat(parts[3]) || target.high;
-                        target.low = parseFloat(parts[4]) || target.low;
-                        target.open = parseFloat(parts[2]) || target.open;
-                        target.tradeTime = Date.now();
-                        updated++;
+
+                    if (target.marketType === 'GLOBAL_FUTURES') {
+                        const parsed = parseGlobalFuturesQuote(sym, line, target);
+                        if (parsed) {
+                            Object.assign(target, parsed);
+                            externalQuotesMap[sym] = target;
+                            updated++;
+                        }
+                    } else if (target.marketType === 'US_STOCK') {
+                        const parsed = parseUsStockQuote(sym, line, target);
+                        if (parsed) {
+                            Object.assign(target, parsed);
+                            externalQuotesMap[sym] = target;
+                            updated++;
+                        }
+                    } else if (target.marketType === 'HK_STOCK') {
+                        const parsed = parseHkStockQuote(sym, line, target);
+                        if (parsed) {
+                            Object.assign(target, parsed);
+                            externalQuotesMap[sym] = target;
+                            updated++;
+                        }
+                    } else {
+                        const parts = line.split(',');
+                        if (parts.length < 15) continue;
+                        const price = parseFloat(parts[8]) || 0;
+                        const prevSettle = parseFloat(parts[10]) || target.prevSettle || 0;
+                        const vol = parseInt(parts[14]) || target.vol || 0;
+                        if (price > 0) {
+                            target.price = price;
+                            target.prevSettle = prevSettle;
+                            target.change = prevSettle > 0 ? (price - prevSettle) : 0;
+                            target.changePercent = prevSettle > 0 ? (target.change / prevSettle) * 100 : 0;
+                            target.vol = vol;
+                            target.high = parseFloat(parts[3]) || target.high;
+                            target.low = parseFloat(parts[4]) || target.low;
+                            target.open = parseFloat(parts[2]) || target.open;
+                            target.tradeTime = Date.now();
+                            updated++;
+                        }
                     }
                 }
                 if (updated > 0) {
@@ -2562,7 +3334,9 @@
             let filtered = [];
 
             if (currentMode === 'custom') {
-                filtered = allPhysicalQuotes.filter(q => isFavorite(q.secid, q.code));
+                const domesticFavs = allPhysicalQuotes.filter(q => isFavorite(q.secid, q.code));
+                const externalFavs = Object.values(externalQuotesMap).filter(q => isFavorite(q.secid, q.code));
+                filtered = [...externalFavs, ...domesticFavs];
                 currentVarietyGroups = [];
                 focusQuotes = filtered;
             } else if (currentMode === 'surge') {
@@ -2864,6 +3638,20 @@
                 else if (data.amount >= 10000) amountStr = (data.amount / 10000).toFixed(1) + ' 万';
                 else if (data.amount > 0) amountStr = data.amount.toLocaleString();
 
+                const isExternal = !!(data.marketType && data.marketType !== 'CN_FUTURES');
+                const curr = data.currency || (data.marketType === 'US_STOCK' || data.marketType === 'GLOBAL_FUTURES' ? '$' : (data.marketType === 'HK_STOCK' ? 'HK$' : '¥'));
+                const volUnit = (data.marketType === 'US_STOCK' || data.marketType === 'HK_STOCK') ? '股' : '手';
+                const marketBadge = data.marketType === 'US_STOCK' 
+                    ? `<span class="tag-physical" style="background: rgba(56, 139, 253, 0.15); color: #58a6ff; border-color: rgba(56, 139, 253, 0.4);">🇺🇸 美股</span>`
+                    : data.marketType === 'HK_STOCK'
+                    ? `<span class="tag-physical" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border-color: rgba(236, 72, 153, 0.4);">🇭🇰 港股</span>`
+                    : data.marketType === 'GLOBAL_FUTURES'
+                    ? `<span class="tag-physical" style="background: rgba(234, 179, 8, 0.15); color: #facc15; border-color: rgba(234, 179, 8, 0.4);">🌍 外盘</span>`
+                    : `<span class="tag-physical">🇨🇳 内盘</span>`;
+                const settleLabel = isExternal ? '昨收价' : '昨结算';
+                const priceDigits = (data.marketType === 'GLOBAL_FUTURES') ? 3 : (data.price % 1 === 0 ? 0 : 2);
+                const diffDigits = (data.marketType === 'GLOBAL_FUTURES') ? 3 : 2;
+
                 const fav = isFavorite(data.secid, data.code);
                 const starIcon = fav ? '★' : '☆';
                 const starClass = fav ? 'star-btn star-active' : 'star-btn star-inactive';
@@ -2872,7 +3660,7 @@
                 const isActive = isQuoteActiveInCurrentSession(data);
                 const isNightWin = isNightSessionWindow();
                 const tradeTimeStr = data.tradeTime ? formatTradeTime(data.tradeTime) : '';
-                const sessionTagHtml = isNightWin
+                const sessionTagHtml = (!isExternal && isNightWin)
                     ? (!isActive
                         ? `<span class="tag-stale" title="该品种无夜盘或今晚未开盘 (最后成交: ${tradeTimeStr})">💤 日盘定格</span>`
                         : `<span class="tag-night-active" title="夜盘活跃撮合中 (最后成交: ${tradeTimeStr})">🌙 夜盘</span>`)
@@ -2883,7 +3671,7 @@
                     <div class="card-header">
                         <div class="contract-info">
                             <span class="contract-name">${data.name}</span>
-                            <span class="tag-physical">真实</span>
+                            ${marketBadge}
                             ${sessionTagHtml}
                             <span class="contract-code">${data.secid}</span>
                         </div>
@@ -2895,8 +3683,8 @@
                     </div>
                     
                     <div class="hero-section">
-                        <span class="latest-price ${priceClass}" id="price-${data.secid}">${data.price > 0 ? data.price.toLocaleString(undefined, {minimumFractionDigits: data.price % 1 === 0 ? 0 : 2, maximumFractionDigits: 2}) : '--'}</span>
-                        <span class="price-diff-text ${priceClass}" id="diff-${data.secid}">${sign}${data.change.toFixed(1)} (振幅 ${data.low > 0 ? (((data.high - data.low)/data.low)*100).toFixed(2) + '%' : '--'})</span>
+                        <span class="latest-price ${priceClass}" id="price-${data.secid}"><span style="font-size: 0.65em; opacity: 0.85; margin-right: 2px;">${curr}</span>${data.price > 0 ? data.price.toLocaleString(undefined, {minimumFractionDigits: priceDigits, maximumFractionDigits: priceDigits}) : '--'}</span>
+                        <span class="price-diff-text ${priceClass}" id="diff-${data.secid}">${sign}${data.change.toFixed(diffDigits)} (振幅 ${data.low > 0 ? (((data.high - data.low)/data.low)*100).toFixed(2) + '%' : '--'})</span>
                     </div>
 
                     <div class="range-bar-wrapper">
@@ -2911,9 +3699,9 @@
                     </div>
 
                     <div class="details-grid">
-                        <div class="detail-row"><span class="detail-label">昨结算</span><span class="detail-value">${data.prevSettle > 0 ? data.prevSettle : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">${settleLabel}</span><span class="detail-value">${data.prevSettle > 0 ? data.prevSettle : '--'}</span></div>
                         <div class="detail-row"><span class="detail-label">开盘价</span><span class="detail-value">${data.open > 0 ? data.open : '--'}</span></div>
-                        <div class="detail-row"><span class="detail-label">成交量</span><span class="detail-value" id="vol-${data.secid}" style="color:#58a6ff; font-weight:bold;">${data.vol > 0 ? data.vol.toLocaleString() + '手' : '--'}</span></div>
+                        <div class="detail-row"><span class="detail-label">成交量</span><span class="detail-value" id="vol-${data.secid}" style="color:#58a6ff; font-weight:bold;">${data.vol > 0 ? data.vol.toLocaleString() + volUnit : '--'}</span></div>
                         <div class="detail-row"><span class="detail-label">成交额</span><span class="detail-value" id="amount-${data.secid}">${amountStr}</span></div>
                     </div>
                 </div>
@@ -2974,6 +3762,10 @@
                     const sign = isUp ? '+' : '';
                     const priceClass = isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat';
                     const badgeClass = isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge';
+                    const curr = data.currency || (data.marketType === 'US_STOCK' || data.marketType === 'GLOBAL_FUTURES' ? '$' : (data.marketType === 'HK_STOCK' ? 'HK$' : '¥'));
+                    const volUnit = (data.marketType === 'US_STOCK' || data.marketType === 'HK_STOCK') ? '股' : '手';
+                    const priceDigits = (data.marketType === 'GLOBAL_FUTURES') ? 3 : (data.price % 1 === 0 ? 0 : 2);
+                    const diffDigits = (data.marketType === 'GLOBAL_FUTURES') ? 3 : 2;
 
                     const badgeEl = document.getElementById(`badge-${data.secid}`);
                     const priceEl = document.getElementById(`price-${data.secid}`);
@@ -2987,13 +3779,13 @@
                     }
                     if (priceEl) {
                         priceEl.className = `latest-price ${priceClass}`;
-                        priceEl.textContent = data.price > 0 ? data.price.toLocaleString(undefined, {minimumFractionDigits: data.price % 1 === 0 ? 0 : 2, maximumFractionDigits: 2}) : '--';
+                        priceEl.innerHTML = `<span style="font-size: 0.65em; opacity: 0.85; margin-right: 2px;">${curr}</span>${data.price > 0 ? data.price.toLocaleString(undefined, {minimumFractionDigits: priceDigits, maximumFractionDigits: priceDigits}) : '--'}`;
                     }
                     if (diffEl) {
                         diffEl.className = `price-diff-text ${priceClass}`;
-                        diffEl.textContent = `${sign}${data.change.toFixed(1)} (振幅 ${data.low > 0 ? (((data.high - data.low)/data.low)*100).toFixed(2) + '%' : '--'})`;
+                        diffEl.textContent = `${sign}${data.change.toFixed(diffDigits)} (振幅 ${data.low > 0 ? (((data.high - data.low)/data.low)*100).toFixed(2) + '%' : '--'})`;
                     }
-                    if (volEl) volEl.textContent = data.vol > 0 ? data.vol.toLocaleString() + '手' : '--';
+                    if (volEl) volEl.textContent = data.vol > 0 ? data.vol.toLocaleString() + volUnit : '--';
                     if (amountEl) {
                         let amountStr = '--';
                         if (data.amount >= 100000000) amountStr = (data.amount / 100000000).toFixed(2) + ' 亿';
@@ -3005,31 +3797,54 @@
             }
         }
 
-        // 精确判断是否在自选列表
+        // 精确判断是否在自选列表 (多市场兼容)
         function isFavorite(secid, code) {
-            const lowSec = secid.toLowerCase();
-            const lowCode = code.toLowerCase();
+            if (!customWatchlist || !customWatchlist.length) return false;
+            const lowSec = (secid || '').toLowerCase().trim();
+            const lowCode = (code || '').toLowerCase().trim();
+
             return customWatchlist.some(c => {
+                if (!c) return false;
+                const lowC = String(c).toLowerCase().trim();
+                if (lowC === lowSec || lowC === lowCode) return true;
+
+                const asset = ASSET_CATALOG.find(a => a.id.toLowerCase() === lowC || a.symbol.toLowerCase() === lowC);
+                if (asset) {
+                    if (asset.id.toLowerCase() === lowSec || asset.symbol.toLowerCase() === lowCode) return true;
+                }
+
                 const res = resolveSecId(c);
-                const targetSec = res ? res.secid.toLowerCase() : c.toLowerCase();
-                const targetSym = res ? res.symbol.toLowerCase() : c.toLowerCase();
-                return targetSec === lowSec || targetSym === lowCode || c.toLowerCase() === lowCode;
+                const targetSec = res ? res.secid.toLowerCase() : lowC;
+                const targetSym = res ? res.symbol.toLowerCase() : lowC;
+                return targetSec === lowSec || targetSym === lowCode;
             });
         }
 
         function toggleFavorite(secid, code, e) {
-            if (e) e.stopPropagation();
+            if (e && e.stopPropagation) e.stopPropagation();
+            const lowSec = (secid || '').toLowerCase().trim();
+            const lowCode = (code || '').toLowerCase().trim();
+
             if (isFavorite(secid, code)) {
-                const lowSec = secid.toLowerCase();
-                const lowCode = code.toLowerCase();
                 customWatchlist = customWatchlist.filter(c => {
+                    if (!c) return false;
+                    const lowC = String(c).toLowerCase().trim();
+                    if (lowC === lowSec || lowC === lowCode) return false;
+
+                    const asset = ASSET_CATALOG.find(a => a.id.toLowerCase() === lowC || a.symbol.toLowerCase() === lowC);
+                    if (asset) {
+                        if (asset.id.toLowerCase() === lowSec || asset.symbol.toLowerCase() === lowCode) return false;
+                    }
+
                     const res = resolveSecId(c);
-                    const targetSec = res ? res.secid.toLowerCase() : c.toLowerCase();
-                    const targetSym = res ? res.symbol.toLowerCase() : c.toLowerCase();
-                    return !(targetSec === lowSec || targetSym === lowCode || c.toLowerCase() === lowCode);
+                    const targetSec = res ? res.secid.toLowerCase() : lowC;
+                    const targetSym = res ? res.symbol.toLowerCase() : lowC;
+                    return !(targetSec === lowSec || targetSym === lowCode);
                 });
             } else {
-                customWatchlist.unshift(code);
+                const asset = ASSET_CATALOG.find(a => a.id.toLowerCase() === lowSec || a.symbol.toLowerCase() === lowCode || a.id.toLowerCase() === lowCode);
+                const toAdd = asset ? asset.id : (code || secid);
+                customWatchlist.unshift(toAdd);
             }
             saveWatchlist();
             filterAndRenderFocusPool();
@@ -3179,7 +3994,7 @@
         }
 
         function openChartModal(secid, isNavigating = false) {
-            const quote = allPhysicalQuotes.find(q => q.secid === secid) || focusQuotes.find(q => q.secid === secid);
+            const quote = allPhysicalQuotes.find(q => q.secid === secid) || focusQuotes.find(q => q.secid === secid) || externalQuotesMap[secid];
             if (!quote) return;
 
             activeModalSecId = secid;
@@ -3200,7 +4015,7 @@
                 const isNightWin = isNightSessionWindow();
                 const isActive = isQuoteActiveInCurrentSession(quote);
                 const tradeTimeStr = quote.tradeTime ? formatTradeTime(quote.tradeTime) : '';
-                if (isNightWin) {
+                if (isNightWin && (!quote.marketType || quote.marketType === 'CN_FUTURES')) {
                     sessionTagEl.innerHTML = !isActive
                         ? `<span class="tag-stale" title="该品种无夜盘或今晚未开盘 (最后成交: ${tradeTimeStr})">💤 日盘定格 (${tradeTimeStr})</span>`
                         : `<span class="tag-night-active" title="夜盘活跃撮合中 (最后成交: ${tradeTimeStr})">🌙 夜盘活跃 (${tradeTimeStr})</span>`;
@@ -3216,12 +4031,15 @@
             const sign = isUp ? '+' : '';
             const priceEl = document.getElementById('modal-price');
             const badgeEl = document.getElementById('modal-badge');
+            const curr = quote.currency || (quote.marketType === 'US_STOCK' || quote.marketType === 'GLOBAL_FUTURES' ? '$' : (quote.marketType === 'HK_STOCK' ? 'HK$' : '¥'));
+            const priceDigits = quote.marketType === 'GLOBAL_FUTURES' ? 3 : (quote.price % 1 === 0 ? 0 : 2);
+            const diffDigits = quote.marketType === 'GLOBAL_FUTURES' ? 3 : 2;
 
             priceEl.className = 'modal-price-hero ' + (isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat');
-            priceEl.textContent = quote.price > 0 ? quote.price : '--';
+            priceEl.innerHTML = `<span style="font-size: 0.65em; opacity: 0.85; margin-right: 4px;">${curr}</span>${quote.price > 0 ? quote.price.toLocaleString(undefined, {minimumFractionDigits: priceDigits, maximumFractionDigits: priceDigits}) : '--'}`;
 
             badgeEl.className = 'change-badge ' + (isUp ? 'is-up-badge' : isDown ? 'is-down-badge' : 'is-flat-badge');
-            badgeEl.textContent = `${sign}${quote.change.toFixed(1)} (${sign}${quote.changePercent.toFixed(2)}%)`;
+            badgeEl.textContent = `${sign}${quote.change.toFixed(diffDigits)} (${sign}${quote.changePercent.toFixed(2)}%)`;
 
             updateModalSeqBadge();
 
@@ -4117,6 +4935,10 @@
 
         // 绘制多日分时图与 Overview 时间迷你滑块
         async function drawTrendChart(ctx, w, h) {
+            if (activeModalQuote && activeModalQuote.marketType && activeModalQuote.marketType !== 'CN_FUTURES') {
+                drawExternalAssetPlaceholder(ctx, w, h, activeModalQuote);
+                return 1;
+            }
             const secid = activeModalSecId;
             const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
 
@@ -4496,6 +5318,10 @@
 
         // 绘制多周期 K 线图 (新浪 1023 根真实多日历史数据库，初始化精准截取 150 根/80 根)
         async function drawKlineChart(ctx, w, h, klt, reqLimit) {
+            if (activeModalQuote && activeModalQuote.marketType && activeModalQuote.marketType !== 'CN_FUTURES') {
+                drawExternalAssetPlaceholder(ctx, w, h, activeModalQuote);
+                return 1;
+            }
             const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
             cachedFullKlines = [];
 
