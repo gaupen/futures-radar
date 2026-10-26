@@ -1368,33 +1368,33 @@
         // 精选外盘/美股/港股标的索引库 (以 Instrument 统一抽象标准，映射新浪主力行情代码与东财官方分时 secid)
         const ASSET_CATALOG = [
             // === 🌍 外盘商品期货 (标的: Instrument) ===
-            { id: 'hf_CL', symbol: 'CL', emSecid: '102.CL00Y', name: 'WTI纽约原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyuanyou nyse wti cl', category: 'global' },
-            { id: 'hf_OIL', symbol: 'OIL', emSecid: '112.B00Y', name: '布伦特原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'bulunte brent oil', category: 'global' },
-            { id: 'hf_GC', symbol: 'GC', emSecid: '102.GC00Y', name: 'COMEX纽约黄金', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'huangjin gold gc comex', category: 'global' },
-            { id: 'hf_SI', symbol: 'SI', emSecid: '102.SI00Y', name: 'COMEX纽约白银', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'baiyin silver si', category: 'global' },
-            { id: 'hf_CAD', symbol: 'CAD', emSecid: '102.CAD00Y', name: 'LME伦敦铜', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'lunduntong copper lme cad', category: 'global' },
-            { id: 'hf_S', symbol: 'S', emSecid: '102.S00Y', name: 'CBOT美大豆', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meidadou soybean s cbot', category: 'global' },
-            { id: 'hf_C', symbol: 'C', emSecid: '102.C00Y', name: 'CBOT美玉米', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyumi corn c cbot', category: 'global' },
-            { id: 'hf_NG', symbol: 'NG', emSecid: '102.NG00Y', name: 'NYMEX天然气', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'tianranqi gas ng', category: 'global' },
+            { id: 'hf_CL', symbol: 'CL', name: 'WTI纽约原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyuanyou nyse wti cl', category: 'global' },
+            { id: 'hf_OIL', symbol: 'OIL', name: '布伦特原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'bulunte brent oil', category: 'global' },
+            { id: 'hf_GC', symbol: 'GC', name: 'COMEX纽约黄金', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'huangjin gold gc comex', category: 'global' },
+            { id: 'hf_SI', symbol: 'SI', name: 'COMEX纽约白银', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'baiyin silver si', category: 'global' },
+            { id: 'hf_CAD', symbol: 'CAD', name: 'LME伦敦铜', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'lunduntong copper lme cad', category: 'global' },
+            { id: 'hf_S', symbol: 'S', name: 'CBOT美大豆', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meidadou soybean s cbot', category: 'global' },
+            { id: 'hf_C', symbol: 'C', name: 'CBOT美玉米', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyumi corn c cbot', category: 'global' },
+            { id: 'hf_NG', symbol: 'NG', name: 'NYMEX天然气', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'tianranqi gas ng', category: 'global' },
 
             // === 🇺🇸 美股七姐妹 & 标杆指数 ===
-            { id: 'gb_nvda', symbol: 'NVDA', emSecid: '105.NVDA', name: '英伟达 (NVIDIA)', market: 'US_STOCK', currency: '$', pinyin: 'yingweida nvda', category: 'us' },
-            { id: 'gb_aapl', symbol: 'AAPL', emSecid: '105.AAPL', name: '苹果公司 (Apple)', market: 'US_STOCK', currency: '$', pinyin: 'pingguo apple aapl', category: 'us' },
-            { id: 'gb_msft', symbol: 'MSFT', emSecid: '105.MSFT', name: '微软 (Microsoft)', market: 'US_STOCK', currency: '$', pinyin: 'weiruan msft', category: 'us' },
-            { id: 'gb_googl', symbol: 'GOOGL', emSecid: '105.GOOGL', name: '谷歌 Alphabet', market: 'US_STOCK', currency: '$', pinyin: 'guge google googl', category: 'us' },
-            { id: 'gb_amzn', symbol: 'AMZN', emSecid: '105.AMZN', name: '亚马逊 (Amazon)', market: 'US_STOCK', currency: '$', pinyin: 'yamaxun amzn', category: 'us' },
-            { id: 'gb_tsla', symbol: 'TSLA', emSecid: '105.TSLA', name: '特斯拉 (Tesla)', market: 'US_STOCK', currency: '$', pinyin: 'tesila tsla', category: 'us' },
-            { id: 'gb_meta', symbol: 'META', emSecid: '105.META', name: 'Meta (Facebook)', market: 'US_STOCK', currency: '$', pinyin: 'meta facebook', category: 'us' },
-            { id: 'gb_qqq', symbol: 'QQQ', emSecid: '105.QQQ', name: '纳斯达克100 ETF', market: 'US_STOCK', currency: '$', pinyin: 'nasidake qqq', category: 'us' },
-            { id: 'gb_spy', symbol: 'SPY', emSecid: '105.SPY', name: '标普500 ETF (SPY)', market: 'US_STOCK', currency: '$', pinyin: 'biaopu spy', category: 'us' },
+            { id: 'gb_nvda', symbol: 'NVDA', name: '英伟达 (NVIDIA)', market: 'US_STOCK', currency: '$', pinyin: 'yingweida nvda', category: 'us' },
+            { id: 'gb_aapl', symbol: 'AAPL', name: '苹果公司 (Apple)', market: 'US_STOCK', currency: '$', pinyin: 'pingguo apple aapl', category: 'us' },
+            { id: 'gb_msft', symbol: 'MSFT', name: '微软 (Microsoft)', market: 'US_STOCK', currency: '$', pinyin: 'weiruan msft', category: 'us' },
+            { id: 'gb_googl', symbol: 'GOOGL', name: '谷歌 Alphabet', market: 'US_STOCK', currency: '$', pinyin: 'guge google googl', category: 'us' },
+            { id: 'gb_amzn', symbol: 'AMZN', name: '亚马逊 (Amazon)', market: 'US_STOCK', currency: '$', pinyin: 'yamaxun amzn', category: 'us' },
+            { id: 'gb_tsla', symbol: 'TSLA', name: '特斯拉 (Tesla)', market: 'US_STOCK', currency: '$', pinyin: 'tesila tsla', category: 'us' },
+            { id: 'gb_meta', symbol: 'META', name: 'Meta (Facebook)', market: 'US_STOCK', currency: '$', pinyin: 'meta facebook', category: 'us' },
+            { id: 'gb_qqq', symbol: 'QQQ', name: '纳斯达克100 ETF', market: 'US_STOCK', currency: '$', pinyin: 'nasidake qqq', category: 'us' },
+            { id: 'gb_spy', symbol: 'SPY', name: '标普500 ETF (SPY)', market: 'US_STOCK', currency: '$', pinyin: 'biaopu spy', category: 'us' },
 
             // === 🇭🇰 恒生科技与旗舰港股 ===
-            { id: 'rt_hk00700', symbol: '00700', emSecid: '116.00700', name: '腾讯控股', market: 'HK_STOCK', currency: 'HK$', pinyin: 'tengxun 700 00700 tencent', category: 'hk' },
-            { id: 'rt_hk09988', symbol: '09988', emSecid: '116.09988', name: '阿里巴巴-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'alibaba ali 9988 09988', category: 'hk' },
-            { id: 'rt_hk03690', symbol: '03690', emSecid: '116.03690', name: '美团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'meituan 3690 03690', category: 'hk' },
-            { id: 'rt_hk01810', symbol: '01810', emSecid: '116.01810', name: '小米集团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'xiaomi 1810 01810', category: 'hk' },
-            { id: 'rt_hk01211', symbol: '01211', emSecid: '116.01211', name: '比亚迪股份', market: 'HK_STOCK', currency: 'HK$', pinyin: 'biyadi byd 1211 01211', category: 'hk' },
-            { id: 'rt_hk00981', symbol: '00981', emSecid: '116.00981', name: '中芯国际', market: 'HK_STOCK', currency: 'HK$', pinyin: 'zhongxin smic 981 00981', category: 'hk' }
+            { id: 'rt_hk00700', symbol: '00700', name: '腾讯控股', market: 'HK_STOCK', currency: 'HK$', pinyin: 'tengxun 700 00700 tencent', category: 'hk' },
+            { id: 'rt_hk09988', symbol: '09988', name: '阿里巴巴-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'alibaba ali 9988 09988', category: 'hk' },
+            { id: 'rt_hk03690', symbol: '03690', name: '美团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'meituan 3690 03690', category: 'hk' },
+            { id: 'rt_hk01810', symbol: '01810', name: '小米集团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'xiaomi 1810 01810', category: 'hk' },
+            { id: 'rt_hk01211', symbol: '01211', name: '比亚迪股份', market: 'HK_STOCK', currency: 'HK$', pinyin: 'biyadi byd 1211 01211', category: 'hk' },
+            { id: 'rt_hk00981', symbol: '00981', name: '中芯国际', market: 'HK_STOCK', currency: 'HK$', pinyin: 'zhongxin smic 981 00981', category: 'hk' }
         ];
 
         // 统一外盘期货行情解析器
@@ -1412,7 +1412,6 @@
             const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
             return {
                 secid: sym,
-                emSecid: (meta && meta.emSecid) || null,
                 code: sym.replace('hf_', ''),
                 name: name,
                 marketType: 'GLOBAL_FUTURES',
@@ -1447,7 +1446,6 @@
             if (price <= 0) return null;
             return {
                 secid: sym,
-                emSecid: (meta && meta.emSecid) || null,
                 code: sym.replace('gb_', '').toUpperCase(),
                 name: name,
                 marketType: 'US_STOCK',
@@ -1483,7 +1481,6 @@
             if (price <= 0) return null;
             return {
                 secid: sym,
-                emSecid: (meta && meta.emSecid) || null,
                 code: sym.replace('rt_hk', ''),
                 name: name,
                 marketType: 'HK_STOCK',
@@ -1502,26 +1499,7 @@
             };
         }
 
-        // 通用标的东财 SecId 解析器 (跨市场统一解析器：将任何标的/合约转换为东财识别代码)
-        function getInstrumentEastSecId(quote, fallbackSecId) {
-            if (quote && quote.emSecid) return quote.emSecid;
-            const sid = quote ? (quote.secid || quote.code) : fallbackSecId;
-            if (!sid) return null;
-            if (sid.includes('.')) return sid;
-            const meta = ASSET_CATALOG.find(a => a.id === sid || a.symbol === sid || (quote && a.symbol === quote.code));
-            if (meta && meta.emSecid) return meta.emSecid;
-            const cnSecid = secidOf(quote ? (quote.code || quote.secid) : sid);
-            if (cnSecid) return cnSecid;
-            if (quote && quote.marketType === 'US_STOCK') {
-                const pureSym = (quote.code || sid).replace(/^gb_/i, '').toUpperCase();
-                return `105.${pureSym}`;
-            }
-            if (quote && quote.marketType === 'HK_STOCK') {
-                const pureSym = (quote.code || sid).replace(/^rt_hk/i, '');
-                return `116.${pureSym}`;
-            }
-            return null;
-        }
+
 
         // ==================== 多市场外部资产行情缓存与拉取 ====================
         let externalQuotesMap = {};
@@ -2858,145 +2836,7 @@
             }
         }
 
-        // ==================== 批量抓取：合约池 → ulist 分批 ====================
-        // 单批 150 个 secid（实测 200 亦可，留余量避免 URL 过长被网关截断）
-        const ULIST_BATCH = 150;
-        const ULIST_FIELDS = 'f12,f13,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18,f124';
-        const ULIST_UT = 'bd1d9ddb04089700cf9c27f6f7426281';
-        // 东财有多个行情网关，同一个 IP 被某个网关限流时换一个往往就能通
-        const ULIST_HOSTS = ['push2.eastmoney.com', '82.push2.eastmoney.com', 'push2delay.eastmoney.com'];
-        let lastBatchStat = { batches: 0, okBatches: 0, got: 0 };
-        let focusPollTries = 0;   // 焦点池每轮换一个网关，避免长期打在同一个被限流的 host 上
 
-        function ulistUrl(secids, hostIdx) {
-            const host = ULIST_HOSTS[(hostIdx || 0) % ULIST_HOSTS.length];
-            return 'https://' + host + '/api/qt/ulist.np/get?secids=' + secids
-                + '&fltt=2&invt=2&fields=' + ULIST_FIELDS + '&ut=' + ULIST_UT + '&_t=' + Date.now();
-        }
-
-        // 通用东财 JSONP 加载器：用 <script> 加载，天生不受 CORS 约束。
-        // 事实依据：无浏览器环境下 ulist 能取到完整收盘，但浏览器 fetch 被 CORS 拦成 0/N；
-        // 而东财 push2 系列支持 cb= 回调（实测返回 testcb({...});）。脚本标签不校验 ACAO，可绕过。
-        function loadEmJsonp(baseUrl, timeoutMs) {
-            return new Promise((resolve, reject) => {
-                const cbName = '__em_cb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-                const script = document.createElement('script');
-                const sep = baseUrl.indexOf('?') >= 0 ? '&' : '?';
-                let settled = false;
-                const timer = setTimeout(() => finish(null, new Error('jsonp timeout')), timeoutMs || 6000);
-                function finish(data, err) {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
-                    if (script.parentNode) script.parentNode.removeChild(script);
-                    if (err) reject(err); else resolve(data);
-                }
-                window[cbName] = function (data) { finish(data, null); };
-                script.onerror = function () { finish(null, new Error('jsonp script error')); };
-                script.src = baseUrl + sep + 'cb=' + cbName;
-                document.head.appendChild(script);
-            });
-        }
-
-        // 拉取给定 secid 的报价；返回原始 diff 数组。任一批次失败不影响其余批次。
-        // 东财对同一 IP 有频控，且浏览器 fetch 会被 CORS 拦截 → 每批先走 JSONP，失败再退 fetch。
-        const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-        async function fetchSingleBatch(chunk, ci) {
-            let lastErr = '';
-            for (let attempt = 0; attempt < 2; attempt++) {
-                if (attempt > 0) await sleep(150);
-                const url = ulistUrl(chunk.join(','), ci * 3 + attempt);
-                // ① JSONP 优先（绕过浏览器 CORS，实测 ~30-70ms 极速响应）
-                try {
-                    const json = await loadEmJsonp(url, 3000);
-                    const diff = (json && json.data && Array.isArray(json.data.diff)) ? json.data.diff : [];
-                    if (diff.length) return diff;
-                    lastErr = 'jsonp 返回空';
-                } catch (e) { lastErr = 'jsonp: ' + ((e && e.message) || e); }
-                // ② fetch 兜底（带 1500ms 超时中断）
-                try {
-                    const ctrl = new AbortController();
-                    const tid = setTimeout(() => ctrl.abort(), 1500);
-                    const resp = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
-                    clearTimeout(tid);
-                    const json = await resp.json();
-                    const diff = (json && json.data && Array.isArray(json.data.diff)) ? json.data.diff : [];
-                    if (diff.length) return diff;
-                    lastErr = 'fetch 返回空';
-                } catch (e) { lastErr = 'fetch: ' + ((e && e.message) || e); }
-            }
-            console.warn('[ulist] batch ' + (ci + 1) + ' 失败：' + lastErr);
-            return [];
-        }
-
-        async function fetchQuotesBySecids(secids) {
-            const chunks = [];
-            for (let i = 0; i < secids.length; i += ULIST_BATCH) chunks.push(secids.slice(i, i + ULIST_BATCH));
-
-            // 并发拉取所有批次：从过去的串行数秒直接提速至 ~150-250ms 全量完成
-            const promises = chunks.map((chunk, ci) => fetchSingleBatch(chunk, ci));
-            const results = await Promise.allSettled(promises);
-
-            const out = [];
-            let okBatches = 0;
-            results.forEach((res) => {
-                if (res.status === 'fulfilled' && Array.isArray(res.value) && res.value.length) {
-                    okBatches++;
-                    res.value.forEach(d => out.push(d));
-                }
-            });
-
-            lastBatchStat = { batches: chunks.length, okBatches: okBatches, got: out.length };
-            console.log('[ulist] 并发批次统计', lastBatchStat);
-            return out;
-        }
-
-        // 东财 clist 全市场列表接口（备用快速兜底）：
-        // 抓取多头涨幅榜 (po=1) 与 空头跌幅榜 (po=0)，合并去重
-        const CLIST_FS = 'm:113,m:114,m:115,m:220,m:142,m:225';
-        const CLIST_HOSTS = ['https://82.push2.eastmoney.com', 'https://push2.eastmoney.com'];
-        async function fetchQuotesViaClist() {
-            let lastErr = null;
-            for (const host of CLIST_HOSTS) {
-                const makeUrl = (po) => host + '/api/qt/clist/get'
-                    + '?pn=1&pz=100&po=' + po + '&np=1&fltt=2&invt=2&fid=f3'
-                    + '&fs=' + CLIST_FS
-                    + '&fields=' + ULIST_FIELDS
-                    + '&ut=' + ULIST_UT + '&_t=' + Date.now();
-                try {
-                    const ctrl = new AbortController();
-                    const tid = setTimeout(() => ctrl.abort(), 1500);
-                    const respUp = await fetch(makeUrl(1), { cache: 'no-store', signal: ctrl.signal });
-                    const jsonUp = respUp.ok ? await respUp.json() : null;
-
-                    const respDown = await fetch(makeUrl(0), { cache: 'no-store', signal: ctrl.signal });
-                    const jsonDown = respDown.ok ? await respDown.json() : null;
-                    clearTimeout(tid);
-
-                    const diffUp = (jsonUp && jsonUp.data && Array.isArray(jsonUp.data.diff)) ? jsonUp.data.diff : [];
-                    const diffDown = (jsonDown && jsonDown.data && Array.isArray(jsonDown.data.diff)) ? jsonDown.data.diff : [];
-
-                    const map = new Map();
-                    [...diffUp, ...diffDown].forEach(item => {
-                        if (item && item.f12) {
-                            const secid = `${item.f13}.${item.f12}`;
-                            map.set(secid, item);
-                        }
-                    });
-                    const combined = Array.from(map.values());
-                    if (combined.length) {
-                        console.log(`[clist] 从 ${host} 拿到 ${combined.length} 条 (多空双向全覆盖)`);
-                        return combined;
-                    }
-                } catch (e) {
-                    lastErr = e;
-                }
-            }
-            console.warn('[clist] 快速检测不可用：' + ((lastErr && lastErr.message) || lastErr));
-            return [];
-        }
 
         // ==================== 云端收盘快照（Cloudflare Worker Cron + KV） ====================
         // Worker 每天 15:05 / 23:35 / 02:35（北京时间）用 Cron 自动抓一次东财全市场并存入 KV；
@@ -3244,19 +3084,6 @@
                 // 1) 主通道：新浪财经批量直连 (极速并发，无跨域限制)
                 quoteSource = 'sina';
                 let quotes = await fetchQuotesViaSinaBatch(buildContractPool());
-
-                // 2) 备用通道：若新浪未取到（可能网络离线），降级走东财 ulist/clist 批量
-                if (!quotes || quotes.length < 15) {
-                    quoteSource = 'ulist';
-                    let rawList = await fetchQuotesBySecids(buildContractPool().map(p => p.secid));
-                    if (!rawList.length) {
-                        quoteSource = 'clist';
-                        rawList = await fetchQuotesViaClist();
-                    }
-                    if (rawList && rawList.length) {
-                        quotes = buildQuoteMapFromRaw(rawList);
-                    }
-                }
 
                 // 3) 终极兜底：实时上游全挂时，尝试从云端收盘快照恢复，绝不给用户看白板！
                 if (!quotes || quotes.length === 0) {
@@ -5214,95 +5041,102 @@
             };
         }
 
-        // 统一东财 5 日逐分历史分时加载器 (优先通过 Cloudflare Worker 同源代理端点拉取，免除跨域；直连作为备用)
-        async function loadEastMoney5DayTrends(eastSecid) {
-            if (!eastSecid) return null;
-            let json = null;
+        // 外盘期货 5 日分时加载器：新浪当日 1 分钟实时 + Cloudflare KV 4 日历史归档 (100% 纯新浪上游)
+        async function loadForeignFutures5DayTrends(symbol) {
+            const pureSym = (symbol || '').replace(/^hf_/i, '').toUpperCase();
+            if (!pureSym) return null;
 
-            // ① 优先走 Worker 同源代理端点（免除浏览器 CORS 与防盗链限制，超时收紧为 1800ms 快速失败）
-            try {
-                const proxyUrl = `/api/eastmoney/trends?secid=${eastSecid}&ndays=5`;
-                const controller = new AbortController();
-                const tid = setTimeout(() => controller.abort(), 1800);
-                const resp = await fetch(proxyUrl, { signal: controller.signal });
-                clearTimeout(tid);
-                if (resp.ok) {
-                    json = await resp.json();
-                }
-            } catch (pe) {
-                console.warn(`[EastMoney] Worker proxy failed for ${eastSecid}, trying fallback:`, pe);
+            // ① 并发拉取：新浪当日最新 1 分钟 + Worker KV 历史 4 天归档
+            const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSym}`;
+            const historyUrl = `/api/history/foreign-min?symbol=${pureSym}`;
+
+            const [todayRes, historyRes] = await Promise.allSettled([
+                loadSinaFuturesJsonp(mUrl),
+                fetch(historyUrl).then(r => r.ok ? r.json() : null).catch(() => null)
+            ]);
+
+            const todayObj = todayRes.status === 'fulfilled' ? todayRes.value : null;
+            const historyObj = historyRes.status === 'fulfilled' ? historyRes.value : null;
+
+            let officialPrePrice = 0;
+            const todayBars = [];
+            const rawTodayList = (todayObj && todayObj.minLine_1d) ? todayObj.minLine_1d : [];
+
+            if (rawTodayList.length > 0) {
+                rawTodayList.forEach((item, idx) => {
+                    if (!item || item.length < 5) return;
+                    let p = 0, a = 0, tStr = '', v = 0;
+                    if (idx === 0) {
+                        officialPrePrice = parseFloat(item[1]) || 0;
+                        p = parseFloat(item[5]) || 0;
+                        a = parseFloat(item[8]) || 0;
+                        tStr = item[9] || (item[0] + ' ' + item[4]);
+                        v = parseInt(item[6]) || 0;
+                    } else {
+                        p = parseFloat(item[1]) || 0;
+                        a = parseFloat(item[4]) || 0;
+                        tStr = item[item.length - 1] || item[0];
+                        v = parseInt(item[2]) || 0;
+                    }
+                    if (p > 0) {
+                        const parts = tStr.split(' ');
+                        const datePart = parts[0] || '';
+                        const timePart = parts[1] ? parts[1].substring(0, 5) : '';
+                        todayBars.push({
+                            dateStr: tStr,
+                            date: datePart,
+                            time: timePart,
+                            price: p,
+                            open: p,
+                            high: p,
+                            low: p,
+                            vwap: (a > 0 ? a : p),
+                            vol: v
+                        });
+                    }
+                });
             }
 
-            // ② 备用：直连 push2his.eastmoney.com (超时 1000ms 快速失败，杜绝页面卡顿)
-            if (!json || !json.data || !Array.isArray(json.data.trends) || json.data.trends.length === 0) {
-                try {
-                    const directUrl = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${eastSecid}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=5`;
-                    const controller = new AbortController();
-                    const tid = setTimeout(() => controller.abort(), 1000);
-                    const resp = await fetch(directUrl, { signal: controller.signal });
-                    clearTimeout(tid);
-                    if (resp.ok) json = await resp.json();
-                } catch (fe) {
-                    // 直连失败
+            // 处理历史归档 Bars
+            const historyBars = [];
+            if (historyObj && historyObj.ok && Array.isArray(historyObj.bars)) {
+                if (!officialPrePrice && historyObj.preSettlement > 0) {
+                    officialPrePrice = historyObj.preSettlement;
                 }
-            }
-
-            if (json && json.data && Array.isArray(json.data.trends) && json.data.trends.length > 0) {
-                let preSettlement = 0;
-                if (json.data.preSettlement > 0) preSettlement = json.data.preSettlement;
-                else if (json.data.prePrice > 0) preSettlement = json.data.prePrice;
-                else if (json.data.preClose > 0) preSettlement = json.data.preClose;
-
-                const rawTrends = json.data.trends;
-                const bars = [];
-                for (let i = 0; i < rawTrends.length; i++) {
-                    const parts = rawTrends[i].split(',');
-                    if (parts.length < 8) continue;
-                    const timeStr = parts[0] || '';
-                    const datePart = timeStr.includes(' ') ? timeStr.split(' ')[0] : '';
-                    const timePart = timeStr.includes(' ') ? timeStr.split(' ')[1].substring(0, 5) : '';
-                    // SSOT 权威规范: parts[2] 为现价 (parts[3] 为最高价，严禁取 parts[3] 否则变成上包络线)
-                    const p = parseFloat(parts[2]) || 0;
-                    const o = parseFloat(parts[1]) || p;
-                    const h = parseFloat(parts[3]) || p;
-                    const l = parseFloat(parts[4]) || p;
-                    const v = parseInt(parts[5], 10) || 0;
-                    const officialVwap = parseFloat(parts[7]); // f58 交易所官方逐分累积成交均价
-
-                    // 过滤无效价格点
-                    if (p <= 0) continue;
-
-                    // 每日首根可能 vol=0 且 vwap=0，进行安全兜底
-                    bars.push({
-                        dateStr: timeStr,
+                historyObj.bars.forEach(b => {
+                    if (!b || !b.price) return;
+                    const parts = (b.timeStr || '').split(' ');
+                    const datePart = parts[0] || '';
+                    const timePart = parts[1] ? parts[1].substring(0, 5) : '';
+                    historyBars.push({
+                        dateStr: b.timeStr,
                         date: datePart,
                         time: timePart,
-                        price: p,
-                        open: o,
-                        high: h,
-                        low: l,
-                        vol: v,
-                        vwap: (officialVwap > 0 ? officialVwap : p)
+                        price: b.price,
+                        open: b.price,
+                        high: b.price,
+                        low: b.price,
+                        vwap: (b.avgPrice > 0 ? b.avgPrice : b.price),
+                        vol: b.vol || 0
                     });
-                }
-
-                if (bars.length > 0) {
-                    return {
-                        preSettlement: preSettlement,
-                        bars: bars
-                    };
-                }
+                });
             }
-            return null;
+
+            const mergedBars = [...historyBars, ...todayBars];
+            if (mergedBars.length === 0) return null;
+
+            return {
+                preSettlement: officialPrePrice,
+                bars: mergedBars
+            };
         }
 
-        // 多日 1 分钟全量数据高精加载路由中心 (主力通道：东财官方 5 日分时含交易所官方 VWAP；备用通道：新浪)
+        // 多日 1 分钟全量数据高精加载路由中心 (100% 纯新浪上游直连 + Cloudflare KV 外盘 5 日归档)
         async function loadMultiDayTrendBars(secid, symbol) {
             let list = [];
             let officialPrePrice = 0;
             const quote = activeModalQuote;
             const marketType = (quote && quote.marketType) ? quote.marketType : 'CN_FUTURES';
-            const eastSecid = getInstrumentEastSecId(quote, secid);
 
             // 预设默认基准昨结 (以当前标的独立行情报价为初值，局部变量严格自闭环，绝无任何跨标的污染)
             if (quote && quote.prevSettle > 0) {
@@ -5449,64 +5283,19 @@
                 }
 
             } else {
-                // ---------- 外盘期货主力通道：东财 5 日高精通道 (唯一提供多日 1 分钟连续数据源) ----------
-                const eastSecid = getInstrumentEastSecId(quote, secid);
-                if (eastSecid) {
-                    try {
-                        const emRes = await loadEastMoney5DayTrends(eastSecid);
-                        if (emRes && emRes.bars && emRes.bars.length > 0) {
-                            if (emRes.preSettlement > 0) {
-                                officialPrePrice = emRes.preSettlement;
-                            }
-                            list = emRes.bars;
-                            console.log(`[Router] Successfully loaded ${list.length} 5-day bars via EastMoney Primary Channel (${eastSecid})`);
+                // ---------- 外盘期货主力通道：新浪当日 1 分钟分时 + Cloudflare KV 4 日历史归档 (100% 纯新浪上游) ----------
+                try {
+                    const pureSym = (quote?.code || symbol || secid || '').replace(/^hf_/i, '').toUpperCase();
+                    const fgRes = await loadForeignFutures5DayTrends(pureSym);
+                    if (fgRes && fgRes.bars && fgRes.bars.length > 0) {
+                        list = fgRes.bars;
+                        if (fgRes.preSettlement > 0) {
+                            officialPrePrice = fgRes.preSettlement;
                         }
-                    } catch (e) {
-                        console.warn(`[Router] EastMoney 5-day channel failed for ${eastSecid}, triggering failover...`, e);
+                        console.log(`[Router] Successfully loaded ${list.length} 5-day bars via Sina + KV Foreign Archive (${pureSym})`);
                     }
-                }
-
-                // 灾备通道：新浪 GlobalFuturesMinLine (单日分时)
-                if (!list || list.length === 0) {
-                    console.warn('[Router] EastMoney unavailable, activating Sina Global Futures single-day fallback...');
-                    try {
-                        const pureSym = (quote.code || secid).replace(/^hf_/i, '').toUpperCase();
-                        const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSym}`;
-                        const resObj = await loadSinaFuturesJsonp(mUrl);
-                        const rawMinList = (resObj && resObj.minLine_1d) ? resObj.minLine_1d : [];
-                        if (rawMinList && rawMinList.length > 0) {
-                            list = rawMinList.map((item, idx) => {
-                                let p = 0, timePart = '', fullDate = '', vwap = 0, vol = 0;
-                                if (idx === 0 && item.length >= 10) {
-                                    p = parseFloat(item[5]) || 0;
-                                    timePart = item[4] || '06:00';
-                                    fullDate = item[9] || (item[0] + ' ' + timePart);
-                                    vwap = parseFloat(item[8]) || p;
-                                    vol = parseInt(item[6]) || 0;
-                                } else {
-                                    p = parseFloat(item[1]) || 0;
-                                    timePart = item[0] || '';
-                                    fullDate = item[item.length - 1] || item[0];
-                                    vwap = parseFloat(item[4]) || p;
-                                    vol = parseInt(item[2]) || 0;
-                                }
-                                const datePart = fullDate.split(' ')[0] || '';
-                                return {
-                                    dateStr: fullDate,
-                                    date: datePart,
-                                    time: timePart,
-                                    price: p,
-                                    open: p,
-                                    high: p,
-                                    low: p,
-                                    vol: vol,
-                                    vwap: vwap > 0 ? vwap : p
-                                };
-                            }).filter(d => d.price > 0);
-                        }
-                    } catch (e) {
-                        console.warn('[Router] Sina Global Futures fallback failed:', e);
-                    }
+                } catch (e) {
+                    console.warn('[Router] Foreign Futures 5-day channel failed:', e);
                 }
             }
 
@@ -6081,33 +5870,22 @@
                             })).filter(k => k.close > 0 && k.high >= k.low);
                         }
                     } else {
-                        // 分钟级 K 线：优先复用当前标的已拉取的 5 日分时（0ms瞬开），其次从东财拉取，若东财异常则安全降级到新浪日内聚合
-                        let emBars = null;
-                        if (cachedTrendFullBars && cachedTrendFullBars.length > 500 && cachedTrendSymbol === (activeModalSecId || quote?.code)) {
-                            emBars = cachedTrendFullBars;
+                        // 分钟级 K 线：优先复用当前标的已拉取的 5 日分时（0ms瞬开），其次从新浪+KV 5日分时聚合
+                        let trendBars = null;
+                        if (cachedTrendFullBars && cachedTrendFullBars.length > 50 && cachedTrendSymbol === (activeModalSecId || quote?.code)) {
+                            trendBars = cachedTrendFullBars;
                         } else {
-                            const eastSecid = getInstrumentEastSecId(quote, activeModalSecId);
-                            if (eastSecid) {
-                                try {
-                                    const emRes = await loadEastMoney5DayTrends(eastSecid);
-                                    if (emRes && emRes.bars && emRes.bars.length > 0) {
-                                        emBars = emRes.bars;
-                                    }
-                                } catch(e) {
-                                    console.warn('[Router] Load EastMoney bars for global futures kline failed:', e);
+                            try {
+                                const fgRes = await loadForeignFutures5DayTrends(pureSymbol);
+                                if (fgRes && fgRes.bars && fgRes.bars.length > 0) {
+                                    trendBars = fgRes.bars;
                                 }
+                            } catch (e) {
+                                console.warn('[Router] Load Foreign Futures bars for kline failed:', e);
                             }
                         }
-                        if (emBars && emBars.length > 0) {
-                            cachedFullKlines = aggregateTrendBarsToKlines(emBars, parseInt(klt) || 15);
-                        } else {
-                            // 备用通道：从新浪实时 1 分钟线聚合对应分钟 K 柱
-                            const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSymbol}`;
-                            const mObj = await loadSinaFuturesJsonp(mUrl);
-                            const rawMinList = (mObj && mObj.minLine_1d) ? mObj.minLine_1d : [];
-                            if (rawMinList && rawMinList.length > 0) {
-                                cachedFullKlines = aggregateMinLinesToKlines(rawMinList, parseInt(klt) || 15);
-                            }
+                        if (trendBars && trendBars.length > 0) {
+                            cachedFullKlines = aggregateTrendBarsToKlines(trendBars, parseInt(klt) || 15);
                         }
                     }
                 } else {

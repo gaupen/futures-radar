@@ -326,11 +326,12 @@ var index_default = {
       if (!rawSym) return jsonResp({ ok: false, error: "缺少 symbol 参数" }, 400);
       const pureSym = rawSym.replace(/^hf_/i, "").toUpperCase();
 
-      // 获取最近 4 个有效归档日 (排除周日)
+      // 获取最近 4 个有效归档日 (排除周末)
       const targetDates = [];
-      for (let i = 1; i <= 7; i++) {
+      for (let i = 1; i <= 8; i++) {
         const d = new Date(Date.now() + 8 * 3600 * 1000 - i * 86400 * 1000);
-        if (d.getUTCDay() !== 0) {
+        const dow = d.getUTCDay();
+        if (dow !== 0 && dow !== 6) {
           targetDates.push(d.toISOString().slice(0, 10));
         }
         if (targetDates.length >= 4) break;
@@ -604,14 +605,15 @@ var index_default = {
     const dateStr = bjNow.toISOString().slice(0, 10);
 
     // 1. 外盘 CME 交易日收盘归档窗口 (北京时间 05:05 ~ 06:30，周二至周六早晨)
-    // 周日和周一早晨美盘休市无新结算，周二~周六收盘对应美盘上一交易日
+    // 周日和周一早晨美盘休市无新结算，周二~周六早晨收盘对应美盘上一交易日
     if (dayOfWeek >= 2 && dayOfWeek <= 6 && hm >= "05:05" && hm <= "06:30") {
-      const doneKey = `cron:done:foreign:${dateStr}`;
+      const prevTradingDay = new Date(Date.now() + 8 * 3600 * 1000 - 86400 * 1000).toISOString().slice(0, 10);
+      const doneKey = `cron:done:foreign:${prevTradingDay}`;
       const isDone = await env.FUTURES_KV.get(doneKey);
       if (!isDone) {
         try {
-          const saved = await archiveForeignFuturesDay(env, dateStr);
-          console.log(`[cron] 外盘 1 分钟分时全量归档成功 @ ${dateStr}, 品种数: ${saved.symbols.length}`);
+          const saved = await archiveForeignFuturesDay(env, prevTradingDay);
+          console.log(`[cron] 外盘 1 分钟分时全量归档成功 @ ${prevTradingDay}, 品种数: ${saved.symbols.length}`);
         } catch (e) {
           console.warn(`[cron] 外盘归档重试中 (${hm}):`, e && e.message || e);
         }
