@@ -3087,7 +3087,9 @@
             cachedFullKlines = [];
             cachedTrendFullBars = [];
             cachedTrendSymbol = '';
+            cachedTrendOfficialPrePrice = 0;
             overviewDragState = null;
+            trendOverviewRect = null;
             startAllTimers();
         }
 
@@ -3212,8 +3214,9 @@
         }
 
         let activeTrendData = null;
-        let cachedTrendFullBars = [];      // 缓存当前合约全量 1 分钟线 (最高 1023 根)
+        let cachedTrendFullBars = [];      // 缓存当前合约全量 1 分钟线 (最高 1500 根)
         let cachedTrendSymbol = '';        // 当前缓存的品种代码
+        let cachedTrendOfficialPrePrice = 0; // 交易所官方前结算基准价
         let trendViewStartRatio = 0.60;    // 视口起始比例 (0.0 ~ 1.0)
         let trendViewEndRatio = 1.00;      // 视口结束比例 (0.0 ~ 1.0)
         let trendOverviewRect = null;      // Overview 几何区域与视口像素位置
@@ -3272,9 +3275,10 @@
         function getOverviewHit(px, py) {
             if (currentChartType !== 'trend' || !trendOverviewRect) return null;
             const { x, y, w, h, vx1, vx2 } = trendOverviewRect;
-            if (py < y - 6 || py > y + h + 8 || px < x - 8 || px > x + w + 8) return null;
-            if (Math.abs(px - vx1) <= 14) return 'left';
-            if (Math.abs(px - vx2) <= 14) return 'right';
+            // 手机触屏扩大上下触控热区，让手指更容易按住滑块
+            if (py < y - 10 || py > y + h + 14 || px < x - 12 || px > x + w + 12) return null;
+            if (Math.abs(px - vx1) <= 16) return 'left';
+            if (Math.abs(px - vx2) <= 16) return 'right';
             if (px >= vx1 && px <= vx2) return 'pan';
             return 'jump';
         }
@@ -3341,16 +3345,16 @@
                     const px = e.touches[0].clientX - rect.left;
                     const dx = px - overviewDragState.startX;
                     const dxRatio = dx / trendOverviewRect.w;
-                    const minSpan = 0.08;
+                    const minSpan = 0.05;
 
                     if (overviewDragState.mode === 'pan') {
-                        const span = overviewDragState.startRight - overviewDragState.startLeft;
+                        const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
                         let nStart = overviewDragState.startLeft + dxRatio;
                         let nEnd = overviewDragState.startRight + dxRatio;
                         if (nStart < 0) { nStart = 0; nEnd = span; }
                         if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
-                        trendViewStartRatio = Math.max(0, nStart);
-                        trendViewEndRatio = Math.min(1, nEnd);
+                        trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
+                        trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
                     } else if (overviewDragState.mode === 'left') {
                         trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
                     } else if (overviewDragState.mode === 'right') {
@@ -3469,16 +3473,16 @@
                     const px = e.clientX - rect.left;
                     const dx = px - overviewDragState.startX;
                     const dxRatio = dx / trendOverviewRect.w;
-                    const minSpan = 0.08;
+                    const minSpan = 0.05;
 
                     if (overviewDragState.mode === 'pan') {
-                        const span = overviewDragState.startRight - overviewDragState.startLeft;
+                        const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
                         let nStart = overviewDragState.startLeft + dxRatio;
                         let nEnd = overviewDragState.startRight + dxRatio;
                         if (nStart < 0) { nStart = 0; nEnd = span; }
                         if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
-                        trendViewStartRatio = Math.max(0, nStart);
-                        trendViewEndRatio = Math.min(1, nEnd);
+                        trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
+                        trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
                     } else if (overviewDragState.mode === 'left') {
                         trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
                     } else if (overviewDragState.mode === 'right') {
@@ -3523,11 +3527,13 @@
             const dpr = window.devicePixelRatio || 1;
             const w = (container && container.clientWidth) ? container.clientWidth : 1040;
             const h = (container && container.clientHeight) ? container.clientHeight : 520;
-            canvas.width = w * dpr;
-            canvas.height = h * dpr;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
 
             const ctx = canvas.getContext('2d');
-            ctx.scale(dpr, dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, w, h);
 
             try {
@@ -3777,39 +3783,119 @@
         }
 
         // ==================== 多日分时全量数据与 TradingView 级 Overview 引擎 ====================
-        // 多日 1 分钟全量数据高精加载通道 (最高 1023 根)
-        async function loadMultiDayTrendBars(symbol) {
+        // 计算期货时段对应的真实交易所交易日与时间戳归属 (夜盘 20:00~24:00 计入下一交易日，周五夜盘计入下周一)
+        function getFuturesTradingDay(dateStr) {
+            if (!dateStr) return { tradingDay: '', shortLabel: '' };
+            const parts = dateStr.trim().split(' ');
+            const ymd = parts[0];
+            const hm = parts[1] || '00:00';
+            const ymdParts = ymd.split('-').map(Number);
+            const hmParts = hm.split(':').map(Number);
+            const year = ymdParts[0] || 2026;
+            const month = ymdParts[1] || 1;
+            const day = ymdParts[2] || 1;
+            const hour = hmParts[0] || 0;
+            const minute = hmParts[1] || 0;
+
+            const d = new Date(year, month - 1, day, hour, minute);
+            if (hour >= 20) {
+                const dayOfWeek = d.getDay(); // 0 是周日，5 是周五
+                const addDays = (dayOfWeek === 5) ? 3 : (dayOfWeek === 6 ? 2 : 1);
+                d.setDate(d.getDate() + addDays);
+            }
+            const tYear = d.getFullYear();
+            const tMonth = String(d.getMonth() + 1).padStart(2, '0');
+            const tDay = String(d.getDate()).padStart(2, '0');
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            const tWeekday = weekdays[d.getDay()];
+
+            return {
+                tradingDay: `${tYear}-${tMonth}-${tDay}`,
+                shortLabel: `${tMonth}/${tDay} ${tWeekday}`
+            };
+        }
+
+        // 多日 1 分钟全量数据高精加载通道 (优先东财官方 5 日分时含交易所官方 VWAP，备用新浪)
+        async function loadMultiDayTrendBars(secid, symbol) {
             let list = [];
-            try {
-                const min1Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=1`;
-                const res = await loadSinaFuturesJsonp(min1Url);
-                if (res && Array.isArray(res) && res.length > 0) {
-                    list = res.map(item => {
-                        const dateStr = item.d || '';
-                        const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
-                        const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
-                        const c = parseFloat(item.c) || 0;
-                        const o = parseFloat(item.o) || c;
-                        const h = parseFloat(item.h) || c;
-                        const l = parseFloat(item.l) || c;
-                        const v = parseInt(item.v, 10) || 0;
-                        return {
-                            dateStr,
-                            date: datePart,
-                            time: timePart,
-                            price: c,
-                            open: o,
-                            high: h,
-                            low: l,
-                            vol: v,
-                            vwap: (h + l + c) / 3
-                        };
-                    }).filter(b => b.price > 0);
+
+            // 1. 优先获取东财官方 5 日逐分历史分时 (天然自带交易所逐分成交均价 VWAP 与昨结基准)
+            if (secid) {
+                try {
+                    const emUrl = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58&ndays=5`;
+                    const resp = await fetch(emUrl);
+                    if (resp.ok) {
+                        const json = await resp.json();
+                        if (json && json.data && Array.isArray(json.data.trends) && json.data.trends.length > 0) {
+                            if (json.data.preSettlement > 0) {
+                                cachedTrendOfficialPrePrice = json.data.preSettlement;
+                            } else if (json.data.prePrice > 0) {
+                                cachedTrendOfficialPrePrice = json.data.prePrice;
+                            }
+                            list = json.data.trends.map(tStr => {
+                                const parts = tStr.split(',');
+                                const timeStr = parts[0] || '';
+                                const datePart = timeStr.includes(' ') ? timeStr.split(' ')[0] : '';
+                                const timePart = timeStr.includes(' ') ? timeStr.split(' ')[1].substring(0, 5) : '';
+                                const p = parseFloat(parts[2]) || 0;
+                                const o = parseFloat(parts[1]) || p;
+                                const h = parseFloat(parts[3]) || p;
+                                const l = parseFloat(parts[4]) || p;
+                                const v = parseInt(parts[5], 10) || 0;
+                                const officialVwap = parseFloat(parts[7]);
+                                return {
+                                    dateStr: timeStr,
+                                    date: datePart,
+                                    time: timePart,
+                                    price: p,
+                                    open: o,
+                                    high: h,
+                                    low: l,
+                                    vol: v,
+                                    vwap: (officialVwap > 0 ? officialVwap : p)
+                                };
+                            }).filter(b => b.price > 0);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Load EastMoney 5-day trends failed, trying Sina fallback:', e);
                 }
-            } catch (e) {
-                console.warn('Load multi-day 1-min line failed:', e);
             }
 
+            // 2. 备用通道 1：新浪 1 分钟多日分时接口 (1023 根，约 3~5 个交易日)
+            if (!list || list.length === 0) {
+                try {
+                    const min1Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=1`;
+                    const res = await loadSinaFuturesJsonp(min1Url);
+                    if (res && Array.isArray(res) && res.length > 0) {
+                        list = res.map(item => {
+                            const dateStr = item.d || '';
+                            const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
+                            const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
+                            const c = parseFloat(item.c) || 0;
+                            const o = parseFloat(item.o) || c;
+                            const h = parseFloat(item.h) || c;
+                            const l = parseFloat(item.l) || c;
+                            const v = parseInt(item.v, 10) || 0;
+                            return {
+                                dateStr,
+                                date: datePart,
+                                time: timePart,
+                                price: c,
+                                open: o,
+                                high: h,
+                                low: l,
+                                vol: v,
+                                vwap: c
+                            };
+                        }).filter(b => b.price > 0);
+                    }
+                } catch (e) {
+                    console.warn('Load multi-day 1-min line failed:', e);
+                }
+            }
+
+            // 3. 备用通道 2：新浪单日 getMinLine (含交易所官方 VWAP 均价)
             if (!list || list.length === 0) {
                 try {
                     const minUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getMinLine?symbol=${symbol}`;
@@ -3832,49 +3918,29 @@
                 }
             }
 
-            if (!list || list.length === 0) {
-                try {
-                    const min5Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=5`;
-                    const min5Arr = await loadSinaFuturesJsonp(min5Url);
-                    if (min5Arr && min5Arr.length > 0) {
-                        list = min5Arr.map(b => ({
-                            dateStr: b.d || '',
-                            date: b.d ? b.d.split(' ')[0] : '',
-                            time: b.d && b.d.includes(' ') ? b.d.split(' ')[1].substring(0, 5) : '',
-                            price: parseFloat(b.c) || 0,
-                            open: parseFloat(b.o) || 0,
-                            high: parseFloat(b.h) || 0,
-                            low: parseFloat(b.l) || 0,
-                            vwap: (parseFloat(b.h) + parseFloat(b.l) + parseFloat(b.c)) / 3,
-                            vol: parseInt(b.v, 10) || 0
-                        })).filter(d => d.price > 0);
-                    }
-                } catch (e) {
-                    console.warn('Load 5-min line failed:', e);
-                }
-            }
-
-            // 计算精准累计 VWAP 均价
+            // 4. 严谨标定交易日断开分界点 (绝不在跨日时拉斜线连接)
             if (list.length > 0) {
-                let curDate = '';
-                let cumVol = 0;
-                let cumAmount = 0;
-                list.forEach(b => {
-                    if (b.date !== curDate) {
-                        curDate = b.date;
-                        cumVol = 0;
-                        cumAmount = 0;
+                let prevTDay = '';
+                list.forEach((b, idx) => {
+                    const tInfo = getFuturesTradingDay(b.dateStr);
+                    b.tradingDay = tInfo.tradingDay;
+                    b.tradingDayLabel = tInfo.shortLabel;
+                    if (idx === 0) {
+                        b.isDayStart = true;
+                        prevTDay = b.tradingDay;
+                    } else if (b.tradingDay !== prevTDay) {
+                        b.isDayStart = true;
+                        prevTDay = b.tradingDay;
+                    } else {
+                        b.isDayStart = false;
                     }
-                    cumVol += b.vol;
-                    cumAmount += b.price * b.vol;
-                    b.vwap = cumVol > 0 ? (cumAmount / cumVol) : b.price;
                 });
             }
 
             return list;
         }
 
-        // 仅在本地 Canvas 上极速重绘分时与 Overview (0ms 超流畅)
+        // 仅在本地 Canvas 上极速重绘分时与 Overview (0ms 超流畅，绝对不累加 scale)
         function redrawTrendCanvasOnly() {
             if (currentChartType !== 'trend') return;
             const canvas = document.getElementById('pro-chart-canvas');
@@ -3883,20 +3949,27 @@
             const dpr = window.devicePixelRatio || 1;
             const w = container.clientWidth || 1040;
             const h = container.clientHeight || 520;
+            const expW = Math.round(w * dpr);
+            const expH = Math.round(h * dpr);
+            if (canvas.width !== expW || canvas.height !== expH) {
+                canvas.width = expW;
+                canvas.height = expH;
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+            }
             const ctx = canvas.getContext('2d');
-            ctx.save();
-            ctx.scale(dpr, dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             renderTrendCanvasDirect(ctx, w, h);
-            ctx.restore();
         }
 
         // 绘制多日分时图与 Overview 时间迷你滑块
         async function drawTrendChart(ctx, w, h) {
+            const secid = activeModalSecId;
             const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
 
-            if (cachedTrendSymbol !== symbol || !cachedTrendFullBars || cachedTrendFullBars.length === 0) {
-                cachedTrendFullBars = await loadMultiDayTrendBars(symbol);
-                cachedTrendSymbol = symbol;
+            if (cachedTrendSymbol !== (secid || symbol) || !cachedTrendFullBars || cachedTrendFullBars.length === 0) {
+                cachedTrendFullBars = await loadMultiDayTrendBars(secid, symbol);
+                cachedTrendSymbol = (secid || symbol);
 
                 // 初始默认视口：聚焦在「昨天后半段 + 今天全天时段框架」
                 const total = cachedTrendFullBars.length;
@@ -3959,7 +4032,9 @@
             // 3. 价格极值与昨结基准
             const isAtLatest = (eIdx >= totalBars - 1);
             let prePrice = 0;
-            if (activeModalQuote && activeModalQuote.price > 0 && typeof activeModalQuote.change === 'number') {
+            if (cachedTrendOfficialPrePrice && cachedTrendOfficialPrePrice > 0) {
+                prePrice = cachedTrendOfficialPrePrice;
+            } else if (activeModalQuote && activeModalQuote.price > 0 && typeof activeModalQuote.change === 'number') {
                 prePrice = activeModalQuote.price - activeModalQuote.change;
             }
             if (!prePrice || prePrice <= 0) {
@@ -4043,68 +4118,76 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // 7. 日期分界线与时间轴标签
-            let lastDate = '';
+            // 7. 交易日分界线与时间轴标签 (垂直虚线贯穿，时间轴清晰标注如 10/22 四)
             visibleBars.forEach((b, idx) => {
-                if (b.date && b.date !== lastDate) {
-                    lastDate = b.date;
-                    if (idx > 0) {
-                        // 绘制日期分界竖线 (贯穿主图与副图)
-                        ctx.strokeStyle = '#2b3d54';
-                        ctx.lineWidth = 1.2;
-                        ctx.beginPath();
-                        ctx.moveTo(b._x, 0);
-                        ctx.lineTo(b._x, chartAvailableH);
-                        ctx.stroke();
+                if (b.isDayStart && idx > 0) {
+                    // 绘制日期分界竖线 (贯穿主图与副图)
+                    ctx.strokeStyle = '#2b3d54';
+                    ctx.lineWidth = 1.0;
+                    ctx.setLineDash([3, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(b._x, 0);
+                    ctx.lineTo(b._x, chartAvailableH);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
 
-                        // 绘制日期徽标标签
-                        ctx.fillStyle = '#58a6ff';
-                        ctx.font = FONT;
-                        ctx.textAlign = 'center';
-                        const shortDate = b.date.length >= 5 ? b.date.substring(5) : b.date;
-                        ctx.fillText(`📅 ${shortDate}`, b._x, chartAvailableH + 14);
-                    }
+                    // 在独立时间轴上绘制交易日徽标标签
+                    ctx.fillStyle = '#58a6ff';
+                    ctx.font = FONT;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(b.tradingDayLabel || b.date, b._x, chartAvailableH + 14);
                 }
             });
 
-            // 8. 价格走势半透明渐变底色
-            if (visibleBars.length > 1) {
-                const firstX = visibleBars[0]._x;
-                const lastX = visibleBars[visibleBars.length - 1]._x;
+            // 8. 价格走势半透明渐变底色 (按交易日独立成段，断开跨日空白)
+            const dayChunks = [];
+            let curChunk = [];
+            visibleBars.forEach(d => {
+                if (d.isDayStart && curChunk.length > 0) {
+                    dayChunks.push(curChunk);
+                    curChunk = [];
+                }
+                curChunk.push(d);
+            });
+            if (curChunk.length > 0) dayChunks.push(curChunk);
+
+            const grad = ctx.createLinearGradient(0, 0, 0, mainH);
+            grad.addColorStop(0, 'rgba(56, 139, 253, 0.18)');
+            grad.addColorStop(1, 'rgba(56, 139, 253, 0.01)');
+
+            dayChunks.forEach(chunk => {
+                if (chunk.length < 2) return;
+                const firstX = chunk[0]._x;
+                const lastX = chunk[chunk.length - 1]._x;
                 ctx.beginPath();
                 ctx.moveTo(firstX, zeroY);
-                visibleBars.forEach((d, idx) => {
-                    const y = getY(d.price);
-                    if (idx === 0) ctx.lineTo(d._x, y);
-                    else ctx.lineTo(d._x, y);
+                chunk.forEach(d => {
+                    ctx.lineTo(d._x, getY(d.price));
                 });
                 ctx.lineTo(lastX, zeroY);
                 ctx.closePath();
-                const grad = ctx.createLinearGradient(0, 0, 0, mainH);
-                grad.addColorStop(0, 'rgba(56, 139, 253, 0.20)');
-                grad.addColorStop(1, 'rgba(56, 139, 253, 0.02)');
                 ctx.fillStyle = grad;
                 ctx.fill();
-            }
+            });
 
-            // 9. VWAP 均价黄线
+            // 9. VWAP 均价黄线 (交易所官方分时成交均价，跨日断开，绝不拉斜线连接)
             ctx.beginPath();
             ctx.strokeStyle = '#f1c40f';
             ctx.lineWidth = m.lwMA;
             visibleBars.forEach((d, idx) => {
                 const y = getY(d.vwap > 0 ? d.vwap : d.price);
-                if (idx === 0) ctx.moveTo(d._x, y);
+                if (idx === 0 || d.isDayStart) ctx.moveTo(d._x, y);
                 else ctx.lineTo(d._x, y);
             });
             ctx.stroke();
 
-            // 10. 价格白线 (主走势)
+            // 10. 价格白线 (主走势，跨日断开，绝不拉斜线连接)
             ctx.beginPath();
             ctx.strokeStyle = '#f0f6fc';
             ctx.lineWidth = m.mobile ? 2.2 : 1.8;
             visibleBars.forEach((d, idx) => {
                 const y = getY(d.price);
-                if (idx === 0) ctx.moveTo(d._x, y);
+                if (idx === 0 || d.isDayStart) ctx.moveTo(d._x, y);
                 else ctx.lineTo(d._x, y);
             });
             ctx.stroke();
@@ -4160,23 +4243,36 @@
                 ctx.lineWidth = 1;
                 ctx.strokeRect(padL, overviewTop, availW, overviewH);
 
-                // 全景缩略折线
+                // 全景缩略折线 (跨日断开)
                 const allP = allBars.map(b => b.price);
                 const aMin = Math.min(...allP);
                 const aMax = Math.max(...allP);
                 const aDiff = (aMax - aMin) || 1;
 
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(88, 166, 255, 0.55)';
+                ctx.strokeStyle = 'rgba(88, 166, 255, 0.60)';
                 ctx.lineWidth = 1.1;
                 for (let i = 0; i < allBars.length; i++) {
                     const ox = padL + (i / (allBars.length - 1)) * availW;
                     const normY = (allBars[i].price - aMin) / aDiff;
                     const oy = (overviewBottom - 3) - normY * (overviewH - 6);
-                    if (i === 0) ctx.moveTo(ox, oy);
+                    if (i === 0 || allBars[i].isDayStart) ctx.moveTo(ox, oy);
                     else ctx.lineTo(ox, oy);
                 }
                 ctx.stroke();
+
+                // 在 Overview 上标注日分界虚线
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.lineWidth = 1;
+                for (let i = 1; i < allBars.length; i++) {
+                    if (allBars[i].isDayStart) {
+                        const ox = padL + (i / (allBars.length - 1)) * availW;
+                        ctx.beginPath();
+                        ctx.moveTo(ox, overviewTop);
+                        ctx.lineTo(ox, overviewBottom);
+                        ctx.stroke();
+                    }
+                }
 
                 // 视口选框坐标
                 const vx1 = padL + trendViewStartRatio * availW;
@@ -4184,7 +4280,7 @@
                 const vWidth = Math.max(12, vx2 - vx1);
 
                 // 左右两侧暗色遮罩
-                ctx.fillStyle = 'rgba(5, 9, 15, 0.72)';
+                ctx.fillStyle = 'rgba(5, 9, 15, 0.75)';
                 if (vx1 > padL) {
                     ctx.fillRect(padL, overviewTop, vx1 - padL, overviewH);
                 }
@@ -4193,7 +4289,7 @@
                 }
 
                 // 激活视口框 (高亮蓝边 + 微弱半透明填充)
-                ctx.fillStyle = 'rgba(56, 139, 253, 0.16)';
+                ctx.fillStyle = 'rgba(56, 139, 253, 0.18)';
                 ctx.fillRect(vx1, overviewTop, vWidth, overviewH);
                 ctx.strokeStyle = '#58a6ff';
                 ctx.lineWidth = 1.5;
@@ -4277,11 +4373,13 @@
             const dpr = window.devicePixelRatio || 1;
             const w = (container && container.clientWidth) ? container.clientWidth : 1040;
             const h = (container && container.clientHeight) ? container.clientHeight : 520;
-            canvas.width = w * dpr;
-            canvas.height = h * dpr;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
 
             const ctx = canvas.getContext('2d');
-            ctx.scale(dpr, dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, w, h);
 
             // 截取当前视口可见的 K 线子集（支持触控平移 chartViewStart，强健容错防御 NaN）
