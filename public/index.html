@@ -4020,7 +4020,7 @@
                     if (timer) clearTimeout(timer);
                     try { delete window[cbName]; } catch(e) {}
                     if (script.parentNode) script.parentNode.removeChild(script);
-                    resolve(Array.isArray(res) ? res : null);
+                    resolve(res || null);
                 }
 
                 script.onload = function() {
@@ -5073,8 +5073,13 @@
         // 绘制多日分时图与 Overview 时间迷你滑块
         async function drawTrendChart(ctx, w, h) {
             if (activeModalQuote && activeModalQuote.marketType && activeModalQuote.marketType !== 'CN_FUTURES') {
-                drawExternalAssetPlaceholder(ctx, w, h, activeModalQuote);
-                return 1;
+                // 对于外盘期货与美股，无缝切换至高频 15 分钟/日K线并实时渲染
+                currentChartType = '15';
+                document.querySelectorAll('.chart-tab-btn').forEach(b => b.classList.remove('active'));
+                const btn15 = document.getElementById('chart-tab-k15');
+                if (btn15) btn15.classList.add('active');
+                const reqBars = (w <= 600) ? 60 : 100;
+                return await drawKlineChart(ctx, w, h, '15', reqBars);
             }
             const secid = activeModalSecId;
             const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
@@ -5453,33 +5458,129 @@
             };
         }
 
+        function aggregateMinLinesToKlines(rawList, freq) {
+            if (!Array.isArray(rawList) || rawList.length === 0) return [];
+            const bars = [];
+            rawList.forEach((item, idx) => {
+                if (!item || !item.length) return;
+                let price = 0;
+                let timeStr = '';
+                let vol = 0;
+                if (idx === 0 && item.length >= 10) {
+                    price = parseFloat(item[5]) || 0;
+                    timeStr = item[9] || (item[0] + ' ' + item[4]);
+                    vol = parseInt(item[6]) || 0;
+                } else {
+                    price = parseFloat(item[1]) || 0;
+                    timeStr = item[item.length - 1] || item[0];
+                    vol = parseInt(item[2]) || 0;
+                }
+                if (price > 0) {
+                    bars.push({ timeStr, price, vol });
+                }
+            });
+            if (bars.length === 0) return [];
+            const klines = [];
+            const groupSize = Math.max(1, freq);
+            for (let i = 0; i < bars.length; i += groupSize) {
+                const chunk = bars.slice(i, i + groupSize);
+                if (!chunk.length) continue;
+                let open = chunk[0].price;
+                let close = chunk[chunk.length - 1].price;
+                let high = chunk[0].price;
+                let low = chunk[0].price;
+                let totalVol = 0;
+                chunk.forEach(b => {
+                    if (b.price > high) high = b.price;
+                    if (b.price < low) low = b.price;
+                    totalVol += b.vol;
+                });
+                klines.push({
+                    date: chunk[chunk.length - 1].timeStr,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close,
+                    vol: totalVol
+                });
+            }
+            return klines;
+        }
+
         // 绘制多周期 K 线图 (新浪 1023 根真实多日历史数据库，初始化精准截取 150 根/80 根)
         async function drawKlineChart(ctx, w, h, klt, reqLimit) {
-            if (activeModalQuote && activeModalQuote.marketType && activeModalQuote.marketType !== 'CN_FUTURES') {
-                drawExternalAssetPlaceholder(ctx, w, h, activeModalQuote);
-                return 1;
-            }
-            const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
+            const quote = activeModalQuote;
+            const marketType = quote ? quote.marketType : 'CN_FUTURES';
+            const code = quote ? (quote.code || quote.secid) : activeModalSecId;
             cachedFullKlines = [];
 
             try {
-                let kUrl = '';
-                if (klt === '101') {
-                    kUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getDailyKLine?symbol=${symbol}`;
+                if (marketType === 'US_STOCK') {
+                    // 美股：英伟达 NVDA、苹果 AAPL、微软 MSFT、特斯拉 TSLA 等
+                    const pureSymbol = (code || '').replace(/^gb_/i, '').toLowerCase();
+                    let kUrl = '';
+                    if (klt === '101') {
+                        kUrl = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getDailyK?symbol=${pureSymbol}`;
+                    } else {
+                        kUrl = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getMinK?symbol=${pureSymbol}&type=${klt}`;
+                    }
+                    const rawArr = await loadSinaFuturesJsonp(kUrl);
+                    if (rawArr && Array.isArray(rawArr) && rawArr.length > 0) {
+                        cachedFullKlines = rawArr.map(item => ({
+                            date: item.d || '',
+                            open: parseFloat(item.o) || 0,
+                            high: parseFloat(item.h) || 0,
+                            low: parseFloat(item.l) || 0,
+                            close: parseFloat(item.c) || 0,
+                            vol: parseInt(item.v) || 0
+                        })).filter(k => k.close > 0 && k.high >= k.low);
+                    }
+                } else if (marketType === 'GLOBAL_FUTURES') {
+                    // 外盘期货：WTI纽约原油 CL、COMEX黄金 GC、COMEX白银 SI、伦铜 CAD 等
+                    const pureSymbol = (code || '').replace(/^hf_/i, '').toUpperCase();
+                    if (klt === '101') {
+                        const kUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=${pureSymbol}`;
+                        const rawArr = await loadSinaFuturesJsonp(kUrl);
+                        if (rawArr && Array.isArray(rawArr) && rawArr.length > 0) {
+                            cachedFullKlines = rawArr.map(item => ({
+                                date: item.date || item.d || '',
+                                open: parseFloat(item.open || item.o) || 0,
+                                high: parseFloat(item.high || item.h) || 0,
+                                low: parseFloat(item.low || item.l) || 0,
+                                close: parseFloat(item.close || item.c) || 0,
+                                vol: parseInt(item.volume || item.v) || 0
+                            })).filter(k => k.close > 0 && k.high >= k.low);
+                        }
+                    } else {
+                        // 分钟级 K 线：从实时 1 分钟线聚合对应分钟 K 柱
+                        const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSymbol}`;
+                        const mObj = await loadSinaFuturesJsonp(mUrl);
+                        const rawMinList = (mObj && mObj.minLine_1d) ? mObj.minLine_1d : [];
+                        if (rawMinList && rawMinList.length > 0) {
+                            cachedFullKlines = aggregateMinLinesToKlines(rawMinList, parseInt(klt) || 15);
+                        }
+                    }
                 } else {
-                    kUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=${klt}`;
-                }
+                    // 国内商品期货 (上期所/大商所/郑商所/中金所/广期所)
+                    const symbol = getSinaFuturesSymbol(activeModalSecId, activeModalQuote ? activeModalQuote.code : '');
+                    let kUrl = '';
+                    if (klt === '101') {
+                        kUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getDailyKLine?symbol=${symbol}`;
+                    } else {
+                        kUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=${klt}`;
+                    }
 
-                const rawArr = await loadSinaFuturesJsonp(kUrl);
-                if (rawArr && Array.isArray(rawArr) && rawArr.length > 0) {
-                    cachedFullKlines = rawArr.map(item => ({
-                        date: item.d || '',
-                        open: parseFloat(item.o) || 0,
-                        high: parseFloat(item.h) || 0,
-                        low: parseFloat(item.l) || 0,
-                        close: parseFloat(item.c) || 0,
-                        vol: parseInt(item.v) || 0
-                    })).filter(k => k.close > 0 && k.high >= k.low);
+                    const rawArr = await loadSinaFuturesJsonp(kUrl);
+                    if (rawArr && Array.isArray(rawArr) && rawArr.length > 0) {
+                        cachedFullKlines = rawArr.map(item => ({
+                            date: item.d || '',
+                            open: parseFloat(item.o) || 0,
+                            high: parseFloat(item.h) || 0,
+                            low: parseFloat(item.l) || 0,
+                            close: parseFloat(item.c) || 0,
+                            vol: parseInt(item.v) || 0
+                        })).filter(k => k.close > 0 && k.high >= k.low);
+                    }
                 }
             } catch(e) {
                 console.error('Draw Kline error:', e);
