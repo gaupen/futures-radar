@@ -281,6 +281,28 @@ var index_default = {
         }
       });
     }
+    if (url.pathname === "/api/sina") {
+      const list = url.searchParams.get("list");
+      if (!list) return new Response("", { status: 400 });
+      try {
+        const sinaResp = await fetch("https://hq.sinajs.cn/list=" + list, {
+          headers: {
+            "Referer": "https://finance.sina.com.cn",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+          }
+        });
+        const text = await sinaResp.text();
+        return new Response(text, {
+          headers: {
+            "content-type": "application/javascript; charset=gb18030",
+            "cache-control": "no-cache, no-store",
+            "access-control-allow-origin": "*"
+          }
+        });
+      } catch (e) {
+        return new Response("// error: " + (e && e.message || String(e)), { status: 502 });
+      }
+    }
     if (url.pathname === "/api/watchlist") {
       if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
       if (request.method === "GET") {

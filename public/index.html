@@ -1542,6 +1542,11 @@
                             quote.pinyin = meta.pinyin;
                         }
                         externalQuotesMap[sym] = quote;
+                        externalQuotesMap[sym.toLowerCase()] = quote;
+                        if (meta) {
+                            externalQuotesMap[meta.id] = quote;
+                            externalQuotesMap[meta.id.toLowerCase()] = quote;
+                        }
                     }
                 }
             } catch (e) {
@@ -1652,6 +1657,9 @@
             // 预热拉取外部精选资产行情 (一次批量并发拉取)
             fetchMultiMarketWatchlistQuotes(ASSET_CATALOG.map(a => a.id)).then(() => {
                 renderSearchResults();
+                if (currentMode === 'custom') {
+                    filterAndRenderFocusPool();
+                }
             });
 
             const input = document.getElementById('market-search-input');
@@ -1665,6 +1673,9 @@
             const modal = document.getElementById('search-modal');
             if (modal) modal.style.display = 'none';
             document.body.style.overflow = '';
+            if (currentMode === 'custom') {
+                filterAndRenderFocusPool();
+            }
         }
 
         function closeSearchModalOnBackdrop(e) {
@@ -1853,6 +1864,9 @@
             if (fav && (id.startsWith('hf_') || id.startsWith('gb_') || id.startsWith('rt_hk'))) {
                 await fetchMultiMarketWatchlistQuotes([id]);
                 renderSearchResults();
+            }
+            if (currentMode === 'custom') {
+                filterAndRenderFocusPool();
             }
         }
 
@@ -2963,7 +2977,7 @@
             return 'nf_' + getSinaFuturesSymbol(item.secid, item.code);
         }
 
-        // 统一新浪批量行情加载器：通过动态 <script> 注入，原生无视跨域与 CSP，GB18030 完美解码中文品种名
+        // 统一新浪批量行情加载器：经由 Worker 代理 (注入 Referer: finance.sina.com.cn)，彻底免除 Forbidden / CORS 限制
         function loadSinaBatchScript(symbols) {
             return new Promise((resolve) => {
                 if (!symbols || !symbols.length) return resolve({});
@@ -2982,10 +2996,18 @@
                 script.onload = function() {
                     const result = {};
                     symbols.forEach(sym => {
-                        const varName = 'hq_str_' + sym;
-                        if (typeof window[varName] === 'string' && window[varName].length > 0) {
-                            result[sym] = window[varName];
-                            try { delete window[varName]; } catch (e) { window[varName] = undefined; }
+                        const candidates = [
+                            'hq_str_' + sym,
+                            'hq_str_' + sym.toLowerCase(),
+                            'hq_str_' + sym.toUpperCase()
+                        ];
+                        for (const vn of candidates) {
+                            if (typeof window[vn] === 'string' && window[vn].length > 0) {
+                                result[sym] = window[vn];
+                                result[sym.toLowerCase()] = window[vn];
+                                try { delete window[vn]; } catch (e) { window[vn] = undefined; }
+                                break;
+                            }
                         }
                     });
                     cleanup();
@@ -2997,7 +3019,8 @@
                     resolve({});
                 };
 
-                script.src = 'https://hq.sinajs.cn/list=' + symbols.join(',') + '&_t=' + Date.now();
+                const prefix = (window.location.protocol === 'file:' ? 'https://futures-radar.gaupen.workers.dev' : '');
+                script.src = prefix + '/api/sina?list=' + symbols.join(',') + '&_t=' + Date.now();
                 document.head.appendChild(script);
             });
         }
@@ -3334,9 +3357,62 @@
             let filtered = [];
 
             if (currentMode === 'custom') {
-                const domesticFavs = allPhysicalQuotes.filter(q => isFavorite(q.secid, q.code));
-                const externalFavs = Object.values(externalQuotesMap).filter(q => isFavorite(q.secid, q.code));
-                filtered = [...externalFavs, ...domesticFavs];
+                const customList = [];
+                (customWatchlist || []).forEach(c => {
+                    if (!c) return;
+                    const low = String(c).toLowerCase().trim();
+                    const asset = ASSET_CATALOG.find(a => a.id.toLowerCase() === low || a.symbol.toLowerCase() === low);
+                    if (asset || low.startsWith('hf_') || low.startsWith('gb_') || low.startsWith('rt_hk')) {
+                        const targetId = asset ? asset.id : c;
+                        const existing = externalQuotesMap[targetId] || externalQuotesMap[low] || externalQuotesMap[targetId.toLowerCase()];
+                        if (existing) {
+                            if (!customList.some(item => item.secid.toLowerCase() === existing.secid.toLowerCase())) {
+                                customList.push(existing);
+                            }
+                        } else if (asset) {
+                            // 预构建卡片骨架，避免网络请求中闪烁消失
+                            customList.push({
+                                secid: asset.id,
+                                code: asset.symbol,
+                                name: asset.name,
+                                marketType: asset.market,
+                                currency: asset.currency,
+                                price: 0,
+                                change: 0,
+                                changePercent: 0,
+                                high: 0,
+                                low: 0,
+                                open: 0,
+                                prevSettle: 0,
+                                vol: 0,
+                                amount: 0,
+                                tradeTime: Date.now(),
+                                isLiquid: true
+                            });
+                        }
+                        return;
+                    }
+
+                    // 匹配国内物理合约
+                    const matchedDomestic = allPhysicalQuotes.find(dq => {
+                        const res = resolveSecId(c);
+                        const targetSec = res ? res.secid.toLowerCase() : low;
+                        const targetSym = res ? res.symbol.toLowerCase() : low;
+                        return dq.secid.toLowerCase() === targetSec || dq.code.toLowerCase() === targetSym;
+                    });
+                    if (matchedDomestic && !customList.includes(matchedDomestic)) {
+                        customList.push(matchedDomestic);
+                    }
+                });
+
+                // 兜底补齐已收藏但未在按序循环中命中的合约
+                allPhysicalQuotes.forEach(dq => {
+                    if (isFavorite(dq.secid, dq.code) && !customList.includes(dq)) {
+                        customList.push(dq);
+                    }
+                });
+
+                filtered = customList;
                 currentVarietyGroups = [];
                 focusQuotes = filtered;
             } else if (currentMode === 'surge') {
