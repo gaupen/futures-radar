@@ -1381,25 +1381,57 @@
         function minutesOfDay(d) { return d.getHours() * 60 + d.getMinutes(); }
 
         function isTradingNow(date) {
-            const t = minutesOfDay(date || new Date());
-            return DAY_SESSIONS.some(r => t >= r[0] && t <= r[1])
-                || NIGHT_SESSIONS.some(r => t >= r[0] && t <= r[1]);
+            const d = date || new Date();
+            const day = d.getDay(); // 0: 日, 1: 一, ..., 6: 六
+            const t = minutesOfDay(d);
+
+            // 1. 周日：全天休市（国内期货周日晚无夜盘）
+            if (day === 0) return false;
+
+            // 2. 周六：仅凌晨 00:00 - 02:30 为周五夜盘延续，其余时间全天休市
+            if (day === 6) {
+                return t >= 0 && t <= (2 * 60 + 30);
+            }
+
+            // 3. 周一：凌晨 00:00 - 02:30 不交易（周日晚无夜盘），日盘 09:00 开始
+            if (day === 1) {
+                const isDay = DAY_SESSIONS.some(r => t >= r[0] && t <= r[1]);
+                const isNight = (t >= 21 * 60 && t <= 24 * 60);
+                return isDay || isNight;
+            }
+
+            // 4. 周二至周五：正常交易日（含凌晨夜盘延续、日盘、当晚夜盘前半段）
+            const isDay = DAY_SESSIONS.some(r => t >= r[0] && t <= r[1]);
+            const isNight = (t >= 0 && t <= (2 * 60 + 30)) || (t >= 21 * 60 && t <= 24 * 60);
+            return isDay || isNight;
         }
 
         // 兼容旧调用点：休市 = 不交易
         function isMarketOffHours() { return !isTradingNow(); }
 
         // 是否处于「开盘前 10 分钟」窗口（08:50-09:00 / 13:20-13:30 / 20:50-21:00）
-        // 窗口内虽有收盘快照，但要拉一次最新盘前数据，不能拿旧收盘快照糊弄
-        function inPreOpenWindow() {
-            const t = minutesOfDay(new Date());
+        // 周末全天无开盘前窗口；周一凌晨无夜盘开盘前窗口
+        function inPreOpenWindow(date) {
+            const d = date || new Date();
+            const day = d.getDay();
+            if (day === 0 || day === 6) return false;
+            const t = minutesOfDay(d);
             return OPEN_TIMES.some(o => t >= o - PRE_OPEN_LEAD_MIN && t < o);
         }
 
-        function marketPhaseLabel() {
-            const t = minutesOfDay(new Date());
+        function marketPhaseLabel(date) {
+            const d = date || new Date();
+            const day = d.getDay();
+            const t = minutesOfDay(d);
+
+            if (day === 0) return '休市';
+            if (day === 6) {
+                return (t >= 0 && t <= (2 * 60 + 30)) ? '夜盘' : '休市';
+            }
+            if (day === 1 && t < 9 * 60) return '休市';
+
             if (DAY_SESSIONS.some(r => t >= r[0] && t <= r[1])) return '盘中';
-            if (NIGHT_SESSIONS.some(r => t >= r[0] && t <= r[1])) return '夜盘';
+            if ((t >= 0 && t <= 2 * 60 + 30) || (t >= 21 * 60 && t <= 24 * 60)) return '夜盘';
             return '休市';
         }
 
@@ -1407,11 +1439,18 @@
         function nextRefreshAt(from) {
             const base = from ? new Date(from.getTime()) : new Date();
             if (isTradingNow(base)) return null;
-            for (let dayOffset = 0; dayOffset <= 3; dayOffset++) {
+
+            for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
+                const candidate = new Date(base.getTime());
+                candidate.setDate(candidate.getDate() + dayOffset);
+                candidate.setHours(0, 0, 0, 0);
+                const day = candidate.getDay();
+
+                // 周六、周日没有新的开盘点
+                if (day === 0 || day === 6) continue;
+
                 for (const openMin of OPEN_TIMES) {
-                    const target = new Date(base.getTime());
-                    target.setDate(target.getDate() + dayOffset);
-                    target.setHours(0, 0, 0, 0);
+                    const target = new Date(candidate.getTime());
                     target.setMinutes(openMin - PRE_OPEN_LEAD_MIN);
                     if (target.getTime() > base.getTime() + 30000) return target;
                 }
@@ -1424,6 +1463,22 @@
             return p(d.getHours()) + ':' + p(d.getMinutes());
         }
 
+        // 格式化时间戳：当日显示 HH:mm，跨日显示 MM/DD 星期X HH:mm
+        function fmtTs(ts) {
+            if (!ts) return '--';
+            const d = new Date(ts);
+            const now = new Date();
+            const p = n => (n < 10 ? '0' + n : '' + n);
+            const timeStr = p(d.getHours()) + ':' + p(d.getMinutes());
+            if (d.toDateString() === now.toDateString()) {
+                return timeStr;
+            }
+            const month = d.getMonth() + 1;
+            const day = d.getDate();
+            const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            return `${month}/${day} ${dayNames[d.getDay()]} ${timeStr}`;
+        }
+
         // 休市时给人看的说明：下次几时刷新 + 还差多久
         function idleHintText() {
             const t = nextRefreshAt();
@@ -1431,7 +1486,8 @@
             const now = new Date();
             let mins = Math.round((t.getTime() - now.getTime()) / 60000);
             const sameDay = t.getDate() === now.getDate() && t.getMonth() === now.getMonth();
-            const dayTag = sameDay ? '' : (t.getDate() === now.getDate() + 1 ? '明日 ' : (t.getMonth() + 1) + '/' + t.getDate() + ' ');
+            const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            const dayTag = sameDay ? '' : (t.getDate() === now.getDate() + 1 ? '明日 ' : dayNames[t.getDay()] + ' ');
             let eta = '';
             if (mins >= 60) eta = Math.floor(mins / 60) + ' 小时 ' + (mins % 60) + ' 分';
             else eta = mins + ' 分';
@@ -1582,16 +1638,16 @@
             let html = '';
             if (dataMode === 'live') {
                 if (phase === '休市') {
-                    const t = lastGoodTs ? new Date(lastGoodTs).toTimeString().split(' ')[0] : '--';
-                    html += '🌙 休市 · 最近交易时段收盘 · 抓取于 ' + t + ' · ' + allPhysicalQuotes.length + ' 个合约';
+                    const t = fmtTs(lastGoodTs);
+                    html += '🌙 休市 · 展示收盘快照 · 记录于 ' + t + ' · ' + allPhysicalQuotes.length + ' 个合约';
                 } else {
                     html += '🟢 ' + phase + '实时 · ' + allPhysicalQuotes.length + ' 个合约 · 更新于 '
-                        + (lastGoodTs ? new Date(lastGoodTs).toTimeString().split(' ')[0] : '--');
+                        + fmtTs(lastGoodTs);
                 }
-                html += ' · 源:' + (quoteSource === 'snapshot' ? '收盘快照(定时)' : (quoteSource === 'sina' ? '新浪日线(精选' + SINA_POOL_MONTHS + '月)' : (quoteSource === 'ulist' ? '东财(批量)' : '东财')));
+                html += ' · 源:' + (quoteSource === 'snapshot' ? '云端收盘快照' : (quoteSource === 'sina' ? '新浪日线(精选' + SINA_POOL_MONTHS + '月)' : (quoteSource === 'ulist' ? '东财(批量)' : '东财')));
             } else if (dataMode === 'cache') {
-                const t = lastGoodTs ? new Date(lastGoodTs).toTimeString().split(' ')[0] : '未知';
-                html += '🟡 本次未取到数据，显示本机缓存（截至 ' + t + '）';
+                const t = fmtTs(lastGoodTs);
+                html += '🟡 实时源受限，已自动加载最近快照 (' + t + ') · ' + allPhysicalQuotes.length + ' 个合约';
             } else if (dataMode === 'empty') {
                 html += '⚠️ 未取到任何行情（批次 ' + lastBatchStat.okBatches + '/' + lastBatchStat.batches
                     + ' 成功' + (lastBatchStat.lastErr ? ' · ' + lastBatchStat.lastErr : '') + '）· 点「手动刷新」重试';
@@ -2141,7 +2197,7 @@
         // Worker 每天 15:05 / 23:35 / 02:35（北京时间）用 Cron 自动抓一次东财全市场并存入 KV；
         // 页面休市打开时先读 /api/snapshot，命中即直接渲染，一个东财请求都不发（避免收盘后抓不到）。
         // 仅服务端独占定时抓取与落库，前端纯只读，杜绝客户端脏快照污染。
-        const SNAP_MAX_AGE_MS = 48 * 3600 * 1000;   // 快照超过 48 小时视为过期，不用
+        // 休市期间数据保持定格，永久有效作为兜底，绝不因超时丢弃导致白屏。
 
         async function fetchCloudSnapshot() {
             try {
@@ -2259,15 +2315,15 @@
             if (timerText) timerText.textContent = '重扫中';
 
             try {
-                // 0) 休市且不在开盘前窗口：先读云端收盘快照（Cron 已在 15:05 / 23:35 抓好存入 KV）
-                //    命中即直接渲染，一个东财请求都不发；避免收盘后接口抓不到的风险。
+                // 0) 休市且不在开盘前窗口：优先读取云端收盘快照（KV 永久兜底，秒级呈现）
+                //    命中即直接渲染，一个东财请求都不发；避免收盘/周末接口抓不到的风险。
                 if (!isTradingNow() && !inPreOpenWindow()) {
                     const snap = await fetchCloudSnapshot();
-                    if (snap && snap.ts && (Date.now() - snap.ts) < SNAP_MAX_AGE_MS) {
+                    if (snap && snap.ts) {
                         const snapQuotes = buildQuoteMapFromRaw(snap.diff);
                         const hasUp = snapQuotes.some(q => q.changePercent > 0);
                         const hasDown = snapQuotes.some(q => q.changePercent < 0);
-                        // 校验快照完整性：必须同时包含多头与空头，且合约数充足，杜绝残缺单向快照阻断全盘扫描
+                        // 校验快照完整性：包含有效合约，杜绝残缺单向快照阻断全盘扫描
                         if (snapQuotes.length >= 25 && hasUp && hasDown) {
                             allPhysicalQuotes = snapQuotes;
                             isStep1Ready = true;
@@ -2305,6 +2361,23 @@
                         finishScanPass();
                         return;
                     }
+
+                    // 4) 极端兜底：实时上游全挂时，尝试从云端快照恢复，绝不给用户看白板！
+                    const snap = await fetchCloudSnapshot();
+                    if (snap && snap.ts) {
+                        const snapQuotes = buildQuoteMapFromRaw(snap.diff);
+                        if (snapQuotes.length >= 25) {
+                            allPhysicalQuotes = snapQuotes;
+                            isStep1Ready = true;
+                            lastGoodQuotes = snapQuotes.slice();
+                            lastGoodTs = snap.ts;
+                            quoteSource = 'snapshot';
+                            dataMode = 'cache';
+                            finishScanPass();
+                            return;
+                        }
+                    }
+
                     if (lastGoodQuotes.length) {
                         allPhysicalQuotes = lastGoodQuotes.slice();
                         dataMode = 'cache';
