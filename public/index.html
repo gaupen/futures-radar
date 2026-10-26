@@ -3971,10 +3971,20 @@
                 cachedTrendFullBars = await loadMultiDayTrendBars(secid, symbol);
                 cachedTrendSymbol = (secid || symbol);
 
-                // 初始默认视口：聚焦在「昨天后半段 + 今天全天时段框架」
-                const total = cachedTrendFullBars.length;
-                if (total > 0) {
-                    const defaultSpan = Math.min(0.48, Math.max(0.20, 360 / total));
+                // 初始默认视口：聚焦在「昨天后半段 + 今天全天时段框架(含未来留白)」
+                const N_data = cachedTrendFullBars.length;
+                if (N_data > 0) {
+                    const sessionConfig = getFuturesSessionConfig(activeModalQuote ? activeModalQuote.code : '', activeModalSecId);
+                    const lastBar = cachedTrendFullBars[N_data - 1];
+                    const curSlot = convertTimeToSlotIndex(lastBar.time, sessionConfig);
+                    const remainingSlots = Math.max(0, sessionConfig.totalMinutes - curSlot);
+                    const minBreathingSlots = Math.round(sessionConfig.totalMinutes * 0.12);
+                    const futurePaddingUnits = Math.max(minBreathingSlots, Math.round(remainingSlots * 0.85));
+                    const N_universe = N_data + futurePaddingUnits;
+
+                    // 默认视口宽度：约 1.35 个交易日跨度 (涵盖昨天下午盘 + 今天全天及预留空白)
+                    const targetSpanUnits = Math.min(N_universe, Math.max(260, Math.round(sessionConfig.totalMinutes * 1.35)));
+                    const defaultSpan = Math.min(0.65, Math.max(0.18, targetSpanUnits / N_universe));
                     trendViewEndRatio = 1.0;
                     trendViewStartRatio = Math.max(0, 1.0 - defaultSpan);
                 } else {
@@ -4021,16 +4031,41 @@
             const padR = 8;
             const availW = w - padL - padR;
 
-            // 2. 根据 [trendViewStartRatio, trendViewEndRatio] 切片可视范围数据
-            const totalBars = cachedTrendFullBars.length;
-            const sIdx = Math.max(0, Math.floor(trendViewStartRatio * (totalBars - 1)));
-            const eIdx = Math.min(totalBars - 1, Math.ceil(trendViewEndRatio * (totalBars - 1)));
-            const visibleBars = cachedTrendFullBars.slice(sIdx, eIdx + 1);
+            // 2. 连续统一宇宙时间轴建模 (历史多日真实点数 + 今日剩余交易/呼吸留白)
+            const N_data = cachedTrendFullBars.length;
+            const lastBar = cachedTrendFullBars[N_data - 1];
+            const curSlot = convertTimeToSlotIndex(lastBar.time, sessionConfig);
+            const remainingSlots = Math.max(0, sessionConfig.totalMinutes - curSlot);
+            const minBreathingSlots = Math.round(sessionConfig.totalMinutes * 0.12);
+            const futurePaddingUnits = Math.max(minBreathingSlots, Math.round(remainingSlots * 0.85));
+
+            // 全宇宙时间轴总单元数
+            const N_universe = N_data + futurePaddingUnits;
+
+            // 视口浮动窗口在连续宇宙中的线性映射范围 [vStart, vEnd]
+            const vStart = trendViewStartRatio * (N_universe - 1);
+            const vEnd = trendViewEndRatio * (N_universe - 1);
+            const vSpan = Math.max(10, vEnd - vStart);
+
+            function getBarX(uIdx) {
+                return padL + ((uIdx - vStart) / vSpan) * availW;
+            }
+
+            // 切片处于视口可见物理范围内的实体数据条目 (左右预留 2 根缓冲确保曲线边缘连续)
+            const sIdx = Math.max(0, Math.floor(vStart - 2));
+            const eIdx = Math.min(N_data - 1, Math.ceil(vEnd + 2));
+            const visibleBars = (sIdx <= eIdx) ? cachedTrendFullBars.slice(sIdx, eIdx + 1) : [];
 
             if (visibleBars.length === 0) return;
 
-            // 3. 价格极值与昨结基准
-            const isAtLatest = (eIdx >= totalBars - 1);
+            // 计算各可见条目的实体全局时间轴索引与画布 X 物理坐标
+            visibleBars.forEach((b, idx) => {
+                b.uIdx = sIdx + idx;
+                b._x = getBarX(b.uIdx);
+            });
+
+            // 3. 价格极值与基准线判断 (当视口涵盖最新价及今日未走时段时，保持昨结基准居中)
+            const isAtLatest = (vEnd >= N_data - 1);
             let prePrice = 0;
             if (cachedTrendOfficialPrePrice && cachedTrendOfficialPrePrice > 0) {
                 prePrice = cachedTrendOfficialPrePrice;
@@ -4047,12 +4082,12 @@
 
             let topP, botP;
             if (isAtLatest) {
-                // 观察最新交易日：严格以昨结 prePrice 为中轴对称展开，0.00% 居中
+                // 观察最新交易日时段：严格以昨结 prePrice 为中轴对称展开，0.00% 居中
                 const diff = Math.max(Math.abs(maxP - prePrice), Math.abs(prePrice - minP)) || 1;
                 topP = prePrice + diff * 1.06;
                 botP = prePrice - diff * 1.06;
             } else {
-                // 漫游历史时期：自动按局部极值自适应
+                // 漫游历史时期：自动按当前视口极值自适应展开
                 const pDiff = (maxP - minP) || 1;
                 topP = maxP + pDiff * 0.08;
                 botP = minP - pDiff * 0.08;
@@ -4062,25 +4097,7 @@
                 return mainH - ((p - botP) / (topP - botP)) * mainH;
             }
 
-            // 4. 计算 X 轴映射 (若包含今日最新行情，右侧保留今日剩余未走时段留白)
-            let totalViewUnits = visibleBars.length;
-            if (isAtLatest) {
-                const lastBar = visibleBars[visibleBars.length - 1];
-                const curSlot = convertTimeToSlotIndex(lastBar.time, sessionConfig);
-                const remainingSlots = Math.max(0, sessionConfig.totalMinutes - curSlot);
-                // 留出适度的未来呼吸空间
-                totalViewUnits = visibleBars.length + Math.round(remainingSlots * 0.85);
-            }
-
-            function getBarX(idx) {
-                return padL + (idx / Math.max(1, totalViewUnits - 1)) * availW;
-            }
-
-            visibleBars.forEach((b, idx) => {
-                b._x = getBarX(idx);
-            });
-
-            // 5. 独立时间轴底色与隔离线
+            // 4. 独立时间轴底色与隔离线
             ctx.fillStyle = '#080c12';
             ctx.fillRect(0, chartAvailableH, w, timeAxisH);
             ctx.strokeStyle = '#1a2738';
@@ -4090,7 +4107,7 @@
             ctx.lineTo(w, chartAvailableH);
             ctx.stroke();
 
-            // 6. 主图水平价格网格与涨跌幅刻度
+            // 5. 主图水平价格网格与涨跌幅刻度
             ctx.strokeStyle = '#16202e';
             ctx.lineWidth = m.lwAxis;
             for (let i = 0; i <= 4; i++) {
@@ -4118,10 +4135,9 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // 7. 交易日分界线与时间轴标签 (垂直虚线贯穿，时间轴清晰标注如 10/22 四)
-            visibleBars.forEach((b, idx) => {
-                if (b.isDayStart && idx > 0) {
-                    // 绘制日期分界竖线 (贯穿主图与副图)
+            // 6. 交易日分界线与时间轴标签 (垂直虚线贯穿，时间轴清晰标注如 10/22 四)
+            visibleBars.forEach((b) => {
+                if (b.isDayStart && b.uIdx > 0 && b._x >= padL - 10 && b._x <= padL + availW + 10) {
                     ctx.strokeStyle = '#2b3d54';
                     ctx.lineWidth = 1.0;
                     ctx.setLineDash([3, 3]);
@@ -4131,7 +4147,6 @@
                     ctx.stroke();
                     ctx.setLineDash([]);
 
-                    // 在独立时间轴上绘制交易日徽标标签
                     ctx.fillStyle = '#58a6ff';
                     ctx.font = FONT;
                     ctx.textAlign = 'center';
@@ -4139,7 +4154,7 @@
                 }
             });
 
-            // 8. 价格走势半透明渐变底色 (按交易日独立成段，断开跨日空白)
+            // 7. 价格走势半透明渐变底色 (按交易日独立成段，断开跨日空白)
             const dayChunks = [];
             let curChunk = [];
             visibleBars.forEach(d => {
@@ -4170,7 +4185,7 @@
                 ctx.fill();
             });
 
-            // 9. VWAP 均价黄线 (交易所官方分时成交均价，跨日断开，绝不拉斜线连接)
+            // 8. VWAP 均价黄线 (交易所官方分时成交均价，跨日断开，绝不拉斜线连接)
             ctx.beginPath();
             ctx.strokeStyle = '#f1c40f';
             ctx.lineWidth = m.lwMA;
@@ -4181,7 +4196,7 @@
             });
             ctx.stroke();
 
-            // 10. 价格白线 (主走势，跨日断开，绝不拉斜线连接)
+            // 9. 价格白线 (主走势，跨日断开，绝不拉斜线连接)
             ctx.beginPath();
             ctx.strokeStyle = '#f0f6fc';
             ctx.lineWidth = m.mobile ? 2.2 : 1.8;
@@ -4192,38 +4207,42 @@
             });
             ctx.stroke();
 
-            // 11. 最新价呼吸圆点与横向指示线 (仅在视口包含最新点时显示)
-            if (isAtLatest && visibleBars.length > 0) {
-                const last = visibleBars[visibleBars.length - 1];
-                const lastY = getY(last.price);
+            // 10. 最新价呼吸圆点与横向指示线 (仅当最新点处于画布物理宽度范围内时绘制)
+            const lastBarX = getBarX(N_data - 1);
+            const lastBarY = getY(lastBar.price);
 
-                ctx.strokeStyle = last.price >= prePrice ? '#f85149' : '#2ea043';
+            if (lastBarX >= padL && lastBarX <= padL + availW) {
+                // 水平虚线向右延伸贯穿呼吸留白区
+                ctx.strokeStyle = lastBar.price >= prePrice ? '#f85149' : '#2ea043';
                 ctx.setLineDash([2, 2]);
                 ctx.beginPath();
-                ctx.moveTo(last._x, lastY);
-                ctx.lineTo(w, lastY);
+                ctx.moveTo(lastBarX, lastBarY);
+                ctx.lineTo(padL + availW, lastBarY);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
+                // 最新价实体呼吸圆点
                 ctx.beginPath();
-                ctx.arc(last._x, lastY, 3.5, 0, Math.PI * 2);
+                ctx.arc(lastBarX, lastBarY, 3.5, 0, Math.PI * 2);
                 ctx.fillStyle = '#ffffff';
                 ctx.fill();
                 ctx.lineWidth = 1.5;
-                ctx.strokeStyle = last.price >= prePrice ? '#f85149' : '#2ea043';
+                ctx.strokeStyle = lastBar.price >= prePrice ? '#f85149' : '#2ea043';
                 ctx.stroke();
             }
 
-            // 12. 成交量副图 (红涨绿跌，标准金融规则)
+            // 11. 成交量副图 (红涨绿跌，标准金融规则)
             const maxVol = Math.max(...visibleBars.map(d => d.vol)) || 1;
-            const barW = Math.max(1, Math.min(4, (availW / Math.max(1, totalViewUnits)) * 0.85));
+            const barW = Math.max(1, Math.min(4, (availW / vSpan) * 0.85));
             visibleBars.forEach((d, idx) => {
+                if (d._x < padL - 4 || d._x > padL + availW + 4) return;
                 const bH = (d.vol / maxVol) * volH;
                 let isUp = true;
-                if (idx === 0) {
+                if (d.uIdx === 0) {
                     isUp = d.price >= prePrice;
                 } else {
-                    const prevP = visibleBars[idx - 1].price;
+                    const prevBar = cachedTrendFullBars[d.uIdx - 1];
+                    const prevP = prevBar ? prevBar.price : prePrice;
                     if (d.price > prevP) isUp = true;
                     else if (d.price < prevP) isUp = false;
                     else isUp = (idx > 0 && visibleBars[idx - 1].isUp !== undefined) ? visibleBars[idx - 1].isUp : true;
@@ -4233,7 +4252,7 @@
                 ctx.fillRect(d._x - barW / 2, volBottom - bH, barW, bH);
             });
 
-            // 13. 底部 TradingView 风格 Overview 迷你小地图绘制
+            // 12. 底部 TradingView 风格 Overview 迷你小地图绘制 (映射至统一连续的大时间轴 N_universe)
             const allBars = cachedTrendFullBars;
             if (allBars && allBars.length > 1) {
                 // 底槽背景与边框
@@ -4243,7 +4262,7 @@
                 ctx.lineWidth = 1;
                 ctx.strokeRect(padL, overviewTop, availW, overviewH);
 
-                // 全景缩略折线 (跨日断开)
+                // 全景缩略折线 (跨日断开，基于 N_universe 连续空间投影)
                 const allP = allBars.map(b => b.price);
                 const aMin = Math.min(...allP);
                 const aMax = Math.max(...allP);
@@ -4253,7 +4272,7 @@
                 ctx.strokeStyle = 'rgba(88, 166, 255, 0.60)';
                 ctx.lineWidth = 1.1;
                 for (let i = 0; i < allBars.length; i++) {
-                    const ox = padL + (i / (allBars.length - 1)) * availW;
+                    const ox = padL + (i / (N_universe - 1)) * availW;
                     const normY = (allBars[i].price - aMin) / aDiff;
                     const oy = (overviewBottom - 3) - normY * (overviewH - 6);
                     if (i === 0 || allBars[i].isDayStart) ctx.moveTo(ox, oy);
@@ -4266,7 +4285,7 @@
                 ctx.lineWidth = 1;
                 for (let i = 1; i < allBars.length; i++) {
                     if (allBars[i].isDayStart) {
-                        const ox = padL + (i / (allBars.length - 1)) * availW;
+                        const ox = padL + (i / (N_universe - 1)) * availW;
                         ctx.beginPath();
                         ctx.moveTo(ox, overviewTop);
                         ctx.lineTo(ox, overviewBottom);
@@ -4312,13 +4331,15 @@
                 };
             }
 
-            // 14. 缓存给鼠标十字光标使用
+            // 13. 缓存给鼠标与触控十字光标联动
             activeTrendData = {
                 visibleBars,
                 getX: (b) => b._x,
                 prePrice,
                 padL,
                 availW
+            };
+        }
             };
         }
 
