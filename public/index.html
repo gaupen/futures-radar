@@ -1644,7 +1644,7 @@
                     html += '🟢 ' + phase + '实时 · ' + allPhysicalQuotes.length + ' 个合约 · 更新于 '
                         + fmtTs(lastGoodTs);
                 }
-                html += ' · 源:' + (quoteSource === 'snapshot' ? '云端收盘快照' : (quoteSource === 'sina' ? '新浪日线(精选' + SINA_POOL_MONTHS + '月)' : (quoteSource === 'ulist' ? '东财(批量)' : '东财')));
+                html += ' · 源:' + (quoteSource === 'snapshot' ? '云端收盘快照' : (quoteSource === 'sina' ? '新浪财经(直连)' : (quoteSource === 'ulist' ? '东财(备用)' : '东财')));
             } else if (dataMode === 'cache') {
                 const t = fmtTs(lastGoodTs);
                 html += '🟡 实时源受限，已自动加载最近快照 (' + t + ') · ' + allPhysicalQuotes.length + ' 个合约';
@@ -2209,54 +2209,134 @@
             } catch (e) { return null; }
         }
 
-        // ==================== 第一步：全市场雷达初筛（合约池 + 批量，不依赖列表接口） ====================
-        // 原实现用 clist 列表接口（一次拿全市场）。该接口在非交易时段/限流时返回空甚至直接断连，
-        // 于是界面白屏、且被误判成"非交易时段无数据"。现改为自建合约池 + ulist 批量：
-        // 实测 ulist 在凌晨休市时依然返回完整收盘（燃油2612 -5.99% 可复现），无需任何快照搬运。
-        // —— 但浏览器 fetch/JSONP 可能被 CORS / 外壳 CSP / 拦截插件掐断，故东财拿不到时自动降级到新浪日线。
-
-        // 新浪兜底：东财不可用时，逐合约取日线（getDailyKLine），用最近两日收盘算涨跌幅。
-        // 新浪 JSONP 在用户环境已验证可用（K 线图即走新浪），是最稳的兜底源。
-        // 新浪 symbol = 合约代码大写（如 fu2612 → FU2612）；成交量为日线 v 字段（手）。
-        async function scanViaSina(pool) {
-            const out = [];
-            const CONC = 8; // 并发上限，避免一次性塞几百个 <script>
-            let idx = 0;
-            async function worker() {
-                while (idx < pool.length) {
-                    const item = pool[idx++];
-                    try {
-                        const sym = (item.code || '').toUpperCase();
-                        if (!sym) continue;
-                        const url = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getDailyKLine?symbol=' + sym;
-                        const bars = await loadSinaFuturesJsonp(url);
-                        if (Array.isArray(bars) && bars.length >= 2) {
-                            const last = bars[bars.length - 1];
-                            const prev = bars[bars.length - 2];
-                            const price = parseFloat(last.c) || 0;
-                            const prevClose = parseFloat(prev.c) || 0;
-                            const change = price - prevClose;
-                            const changePercent = prevClose ? (change / prevClose) * 100 : 0;
-                            const vol = parseInt(last.v) || 0;
-                            const isLiquid = (vol >= currentVolThreshold);
-                            if (price > 0 && (isLiquid || isFavorite(item.secid, item.code))) {
-                                out.push({
-                                    secid: item.secid, code: item.code, market: item.market, name: sym,
-                                    price: price, changePercent: changePercent, change: change,
-                                    vol: vol, amount: 0,
-                                    high: parseFloat(last.h) || 0, low: parseFloat(last.l) || 0,
-                                    open: parseFloat(last.o) || 0, prevSettle: prevClose,
-                                    tradeTime: 0,
-                                    isLiquid: isLiquid
-                                });
-                            }
-                        }
-                    } catch (e) {}
-                }
+        // ==================== 第一步：新浪财经批量行情主通道 (极速无跨域并发) ====================
+        // 解析品种在大商所/上期所/郑商所/广期所对应的新浪行情代码（格式 nf_SYMBOL + 4位YYMM）
+        function getSinaFuturesSymbolForPool(item) {
+            const sym = (item.symbol || '').toUpperCase();
+            const ym = parseContractYearMonth(item.name || '', item.code);
+            if (ym && ym.year && ym.month) {
+                const y2 = String(ym.year % 100).padStart(2, '0');
+                const m2 = String(ym.month).padStart(2, '0');
+                return 'nf_' + sym + y2 + m2;
             }
-            const ws = [];
-            for (let i = 0; i < CONC; i++) ws.push(worker());
-            await Promise.all(ws);
+            return 'nf_' + getSinaFuturesSymbol(item.secid, item.code);
+        }
+
+        // 统一新浪批量行情加载器：通过动态 <script> 注入，原生无视跨域与 CSP，GB18030 完美解码中文品种名
+        function loadSinaBatchScript(symbols) {
+            return new Promise((resolve) => {
+                if (!symbols || !symbols.length) return resolve({});
+                const script = document.createElement('script');
+                script.charset = 'gb18030';
+                const timer = setTimeout(() => {
+                    cleanup();
+                    resolve({});
+                }, 3500);
+
+                function cleanup() {
+                    if (timer) clearTimeout(timer);
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                }
+
+                script.onload = function() {
+                    const result = {};
+                    symbols.forEach(sym => {
+                        const varName = 'hq_str_' + sym;
+                        if (typeof window[varName] === 'string' && window[varName].length > 0) {
+                            result[sym] = window[varName];
+                            try { delete window[varName]; } catch (e) { window[varName] = undefined; }
+                        }
+                    });
+                    cleanup();
+                    resolve(result);
+                };
+
+                script.onerror = function() {
+                    cleanup();
+                    resolve({});
+                };
+
+                script.src = 'https://hq.sinajs.cn/list=' + symbols.join(',') + '&_t=' + Date.now();
+                document.head.appendChild(script);
+            });
+        }
+
+        // 新浪全市场批量拉取核心：单请求拼接 45 个合约，3~4 组并发 200ms 全量完成
+        async function fetchQuotesViaSinaBatch(pool) {
+            const BATCH_SIZE = 45;
+            const chunks = [];
+            for (let i = 0; i < pool.length; i += BATCH_SIZE) {
+                chunks.push(pool.slice(i, i + BATCH_SIZE));
+            }
+
+            const promises = chunks.map(async (chunk) => {
+                const symMap = new Map();
+                chunk.forEach(item => {
+                    const sinaSym = getSinaFuturesSymbolForPool(item);
+                    symMap.set(sinaSym, item);
+                });
+                const symbols = Array.from(symMap.keys());
+                const rawMap = await loadSinaBatchScript(symbols);
+                const batchQuotes = [];
+
+                for (const [sym, line] of Object.entries(rawMap)) {
+                    if (!line || typeof line !== 'string') continue;
+                    const item = symMap.get(sym);
+                    if (!item) continue;
+                    const parts = line.split(',');
+                    if (parts.length < 15) continue;
+
+                    const name = parts[0] || (item.code ? item.code.toUpperCase() : '');
+                    const code = item.code || '';
+                    const secid = item.secid || (item.market + '.' + code);
+
+                    // 1. 物理合约过滤：必须带具体年份月份，杜绝主连/主力/指数/当月/临近交割
+                    if (!isPhysicalContract(name, code)) continue;
+
+                    const open = parseFloat(parts[2]) || 0;
+                    const high = parseFloat(parts[3]) || 0;
+                    const low = parseFloat(parts[4]) || 0;
+                    const price = parseFloat(parts[8]) || 0;
+                    const prevSettle = parseFloat(parts[10]) || 0;
+                    const vol = parseInt(parts[14]) || 0;
+
+                    if (price <= 0) continue;
+
+                    // 2. 成交量硬过滤（含自选豁免）
+                    const isLiquid = (vol >= currentVolThreshold);
+                    if (!isLiquid && !isFavorite(secid, code)) continue;
+
+                    const change = prevSettle > 0 ? (price - prevSettle) : 0;
+                    const changePercent = prevSettle > 0 ? (change / prevSettle) * 100 : 0;
+
+                    batchQuotes.push({
+                        secid: secid,
+                        code: code,
+                        market: item.market,
+                        name: name,
+                        price: price,
+                        changePercent: parseFloat(changePercent.toFixed(2)),
+                        change: parseFloat(change.toFixed(2)),
+                        vol: vol,
+                        amount: 0,
+                        high: high,
+                        low: low,
+                        open: open,
+                        prevSettle: prevSettle,
+                        tradeTime: Date.now(),
+                        isLiquid: isLiquid
+                    });
+                }
+                return batchQuotes;
+            });
+
+            const results = await Promise.allSettled(promises);
+            const out = [];
+            results.forEach(res => {
+                if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+                    out.push(...res.value);
+                }
+            });
             return out;
         }
 
@@ -2337,32 +2417,25 @@
                     }
                 }
 
-                // 1) 东财 ulist 批量合约池（JSONP 跨域并发秒级直通，全量 ~150-250ms）
-                quoteSource = 'ulist';
-                let rawList = await fetchQuotesBySecids(buildContractPool().map(p => p.secid));
+                // 1) 主通道：新浪财经批量直连 (极速并发，无跨域限制)
+                quoteSource = 'sina';
+                let quotes = await fetchQuotesViaSinaBatch(buildContractPool());
 
-                // 2) ulist 失败 → 东财 clist 列表快速检测兜底
-                if (!rawList.length) {
-                    quoteSource = 'clist';
-                    rawList = await fetchQuotesViaClist();
+                // 2) 备用通道：若新浪未取到（可能网络离线），降级走东财 ulist/clist 批量
+                if (!quotes || quotes.length < 15) {
+                    quoteSource = 'ulist';
+                    let rawList = await fetchQuotesBySecids(buildContractPool().map(p => p.secid));
+                    if (!rawList.length) {
+                        quoteSource = 'clist';
+                        rawList = await fetchQuotesViaClist();
+                    }
+                    if (rawList && rawList.length) {
+                        quotes = buildQuoteMapFromRaw(rawList);
+                    }
                 }
 
-                // 3) 东财两条都失败 → 新浪日线兜底（逐合约）
-                if (!rawList.length) {
-                    if (textEl) textEl.textContent = `⏳ 东财不可用，正通过新浪补全精选合约…`;
-                    const sinaQuotes = await scanViaSina(buildContractPool(SINA_POOL_MONTHS));
-                    if (sinaQuotes.length) {
-                        allPhysicalQuotes = sinaQuotes;
-                        isStep1Ready = true;
-                        lastGoodQuotes = sinaQuotes.slice();
-                        lastGoodTs = Date.now();
-                        quoteSource = 'sina';
-                        dataMode = 'live';
-                        finishScanPass();
-                        return;
-                    }
-
-                    // 4) 极端兜底：实时上游全挂时，尝试从云端快照恢复，绝不给用户看白板！
+                // 3) 终极兜底：实时上游全挂时，尝试从云端收盘快照恢复，绝不给用户看白板！
+                if (!quotes || quotes.length === 0) {
                     const snap = await fetchCloudSnapshot();
                     if (snap && snap.ts) {
                         const snapQuotes = buildQuoteMapFromRaw(snap.diff);
@@ -2388,7 +2461,7 @@
                     return;
                 }
 
-                allPhysicalQuotes = buildQuoteMapFromRaw(rawList);
+                allPhysicalQuotes = quotes;
                 isStep1Ready = true;
 
                 // 仅在当前运行态内存中保留最近一次成功行情（不写入 localStorage）
@@ -2432,43 +2505,50 @@
             }
         }
 
-        // ==================== 第二步：焦点池高频轻量轮询 (带节拍打点视觉反馈) ====================
+        // ==================== 第二步：焦点池高频轻量轮询 (新浪极速直通) ====================
         async function refreshFocusPoolPrices() {
             if (!isStep1Ready || activeModalSecId || focusQuotes.length === 0) return;
 
             const t0 = performance.now();
-            const secids = focusQuotes.map(q => q.secid).join(',');
-            const url = ulistUrl(secids, focusPollTries++);
+            const symMap = new Map();
+            focusQuotes.forEach(q => {
+                const sym = getSinaFuturesSymbolForPool(q);
+                symMap.set(sym, q);
+            });
+            const symbols = Array.from(symMap.keys());
 
             try {
-                let json = null;
-                try { json = await loadEmJsonp(url, 5000); } catch (e) { json = null; }
-                if (!json || !json.data || !json.data.diff) {
-                    try { const resp = await fetch(url, { cache: 'no-store' }); json = await resp.json(); } catch (e) { json = null; }
+                const rawMap = await loadSinaBatchScript(symbols);
+                let updated = 0;
+                for (const [sym, line] of Object.entries(rawMap)) {
+                    if (!line || typeof line !== 'string') continue;
+                    const target = symMap.get(sym);
+                    if (!target) continue;
+                    const parts = line.split(',');
+                    if (parts.length < 15) continue;
+                    const price = parseFloat(parts[8]) || 0;
+                    const prevSettle = parseFloat(parts[10]) || target.prevSettle || 0;
+                    const vol = parseInt(parts[14]) || target.vol || 0;
+                    if (price > 0) {
+                        target.price = price;
+                        target.prevSettle = prevSettle;
+                        target.change = prevSettle > 0 ? (price - prevSettle) : 0;
+                        target.changePercent = prevSettle > 0 ? (target.change / prevSettle) * 100 : 0;
+                        target.vol = vol;
+                        target.high = parseFloat(parts[3]) || target.high;
+                        target.low = parseFloat(parts[4]) || target.low;
+                        target.open = parseFloat(parts[2]) || target.open;
+                        target.tradeTime = Date.now();
+                        updated++;
+                    }
                 }
-                if (json && json.data && json.data.diff) {
-                    const diff = json.data.diff;
-                    diff.forEach(item => {
-                        const secid = `${item.f13}.${item.f12}`;
-                        const target = focusQuotes.find(q => q.secid === secid);
-                        if (target && item.f2 && item.f2 !== '-') {
-                            target.price = parseFloat(item.f2) || target.price;
-                            target.changePercent = parseFloat(item.f3) || target.changePercent;
-                            target.change = parseFloat(item.f4) || target.change;
-                            target.vol = parseInt(item.f5) || target.vol;
-                            target.amount = parseFloat(item.f6) || target.amount;
-                            target.high = parseFloat(item.f15) || target.high;
-                            target.low = parseFloat(item.f16) || target.low;
-                            if (item.f124) target.tradeTime = parseInt(item.f124, 10) * 1000;
-                        }
-                    });
-                    // 原地轻量更新 DOM 价格数值，不重新构建整树
+                if (updated > 0) {
                     updateDOMValuesInPlace();
                     const elapsed = Math.round(performance.now() - t0);
                     triggerLevel2PulseAnimation(elapsed);
                 }
             } catch(e) {
-                console.warn('Lightweight focus poll error:', e);
+                console.warn('[focus-poll] Sina poll error:', e);
             }
         }
 
