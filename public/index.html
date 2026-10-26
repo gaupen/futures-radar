@@ -1365,35 +1365,36 @@
         };
 
         // 精选外盘/美股/港股资产索引库 (用于智能模糊搜索与快速加入自选)
+        // 精选外盘/美股/港股标的索引库 (以 Instrument 统一抽象标准，映射新浪主力行情代码与东财官方分时 secid)
         const ASSET_CATALOG = [
-            // === 🌍 外盘商品期货 ===
-            { id: 'hf_CL', symbol: 'CL', name: 'WTI纽约原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyuanyou nyse wti cl', category: 'global' },
-            { id: 'hf_OIL', symbol: 'OIL', name: '布伦特原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'bulunte brent oil', category: 'global' },
-            { id: 'hf_GC', symbol: 'GC', name: 'COMEX纽约黄金', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'huangjin gold gc comex', category: 'global' },
-            { id: 'hf_SI', symbol: 'SI', name: 'COMEX纽约白银', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'baiyin silver si', category: 'global' },
-            { id: 'hf_CAD', symbol: 'CAD', name: 'LME伦敦铜', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'lunduntong copper lme cad', category: 'global' },
-            { id: 'hf_S', symbol: 'S', name: 'CBOT美大豆', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meidadou soybean s cbot', category: 'global' },
-            { id: 'hf_C', symbol: 'C', name: 'CBOT美玉米', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyumi corn c cbot', category: 'global' },
-            { id: 'hf_NG', symbol: 'NG', name: 'NYMEX天然气', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'tianranqi gas ng', category: 'global' },
+            // === 🌍 外盘商品期货 (标的: Instrument) ===
+            { id: 'hf_CL', symbol: 'CL', emSecid: '102.CL00Y', name: 'WTI纽约原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyuanyou nyse wti cl', category: 'global' },
+            { id: 'hf_OIL', symbol: 'OIL', emSecid: '112.B00Y', name: '布伦特原油', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'bulunte brent oil', category: 'global' },
+            { id: 'hf_GC', symbol: 'GC', emSecid: '102.GC00Y', name: 'COMEX纽约黄金', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'huangjin gold gc comex', category: 'global' },
+            { id: 'hf_SI', symbol: 'SI', emSecid: '102.SI00Y', name: 'COMEX纽约白银', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'baiyin silver si', category: 'global' },
+            { id: 'hf_CAD', symbol: 'CAD', emSecid: '102.CAD00Y', name: 'LME伦敦铜', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'lunduntong copper lme cad', category: 'global' },
+            { id: 'hf_S', symbol: 'S', emSecid: '102.S00Y', name: 'CBOT美大豆', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meidadou soybean s cbot', category: 'global' },
+            { id: 'hf_C', symbol: 'C', emSecid: '102.C00Y', name: 'CBOT美玉米', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'meiyumi corn c cbot', category: 'global' },
+            { id: 'hf_NG', symbol: 'NG', emSecid: '102.NG00Y', name: 'NYMEX天然气', market: 'GLOBAL_FUTURES', currency: '$', pinyin: 'tianranqi gas ng', category: 'global' },
 
             // === 🇺🇸 美股七姐妹 & 标杆指数 ===
-            { id: 'gb_nvda', symbol: 'NVDA', name: '英伟达 (NVIDIA)', market: 'US_STOCK', currency: '$', pinyin: 'yingweida nvda', category: 'us' },
-            { id: 'gb_aapl', symbol: 'AAPL', name: '苹果公司 (Apple)', market: 'US_STOCK', currency: '$', pinyin: 'pingguo apple aapl', category: 'us' },
-            { id: 'gb_msft', symbol: 'MSFT', name: '微软 (Microsoft)', market: 'US_STOCK', currency: '$', pinyin: 'weiruan msft', category: 'us' },
-            { id: 'gb_googl', symbol: 'GOOGL', name: '谷歌 Alphabet', market: 'US_STOCK', currency: '$', pinyin: 'guge google googl', category: 'us' },
-            { id: 'gb_amzn', symbol: 'AMZN', name: '亚马逊 (Amazon)', market: 'US_STOCK', currency: '$', pinyin: 'yamaxun amzn', category: 'us' },
-            { id: 'gb_tsla', symbol: 'TSLA', name: '特斯拉 (Tesla)', market: 'US_STOCK', currency: '$', pinyin: 'tesila tsla', category: 'us' },
-            { id: 'gb_meta', symbol: 'META', name: 'Meta (Facebook)', market: 'US_STOCK', currency: '$', pinyin: 'meta facebook', category: 'us' },
-            { id: 'gb_qqq', symbol: 'QQQ', name: '纳斯达克100 ETF', market: 'US_STOCK', currency: '$', pinyin: 'nasidake qqq', category: 'us' },
-            { id: 'gb_spy', symbol: 'SPY', name: '标普500 ETF (SPY)', market: 'US_STOCK', currency: '$', pinyin: 'biaopu spy', category: 'us' },
+            { id: 'gb_nvda', symbol: 'NVDA', emSecid: '105.NVDA', name: '英伟达 (NVIDIA)', market: 'US_STOCK', currency: '$', pinyin: 'yingweida nvda', category: 'us' },
+            { id: 'gb_aapl', symbol: 'AAPL', emSecid: '105.AAPL', name: '苹果公司 (Apple)', market: 'US_STOCK', currency: '$', pinyin: 'pingguo apple aapl', category: 'us' },
+            { id: 'gb_msft', symbol: 'MSFT', emSecid: '105.MSFT', name: '微软 (Microsoft)', market: 'US_STOCK', currency: '$', pinyin: 'weiruan msft', category: 'us' },
+            { id: 'gb_googl', symbol: 'GOOGL', emSecid: '105.GOOGL', name: '谷歌 Alphabet', market: 'US_STOCK', currency: '$', pinyin: 'guge google googl', category: 'us' },
+            { id: 'gb_amzn', symbol: 'AMZN', emSecid: '105.AMZN', name: '亚马逊 (Amazon)', market: 'US_STOCK', currency: '$', pinyin: 'yamaxun amzn', category: 'us' },
+            { id: 'gb_tsla', symbol: 'TSLA', emSecid: '105.TSLA', name: '特斯拉 (Tesla)', market: 'US_STOCK', currency: '$', pinyin: 'tesila tsla', category: 'us' },
+            { id: 'gb_meta', symbol: 'META', emSecid: '105.META', name: 'Meta (Facebook)', market: 'US_STOCK', currency: '$', pinyin: 'meta facebook', category: 'us' },
+            { id: 'gb_qqq', symbol: 'QQQ', emSecid: '105.QQQ', name: '纳斯达克100 ETF', market: 'US_STOCK', currency: '$', pinyin: 'nasidake qqq', category: 'us' },
+            { id: 'gb_spy', symbol: 'SPY', emSecid: '105.SPY', name: '标普500 ETF (SPY)', market: 'US_STOCK', currency: '$', pinyin: 'biaopu spy', category: 'us' },
 
             // === 🇭🇰 恒生科技与旗舰港股 ===
-            { id: 'rt_hk00700', symbol: '00700', name: '腾讯控股', market: 'HK_STOCK', currency: 'HK$', pinyin: 'tengxun 700 00700 tencent', category: 'hk' },
-            { id: 'rt_hk09988', symbol: '09988', name: '阿里巴巴-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'alibaba ali 9988 09988', category: 'hk' },
-            { id: 'rt_hk03690', symbol: '03690', name: '美团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'meituan 3690 03690', category: 'hk' },
-            { id: 'rt_hk01810', symbol: '01810', name: '小米集团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'xiaomi 1810 01810', category: 'hk' },
-            { id: 'rt_hk01211', symbol: '01211', name: '比亚迪股份', market: 'HK_STOCK', currency: 'HK$', pinyin: 'biyadi byd 1211 01211', category: 'hk' },
-            { id: 'rt_hk00981', symbol: '00981', name: '中芯国际', market: 'HK_STOCK', currency: 'HK$', pinyin: 'zhongxin smic 981 00981', category: 'hk' }
+            { id: 'rt_hk00700', symbol: '00700', emSecid: '116.00700', name: '腾讯控股', market: 'HK_STOCK', currency: 'HK$', pinyin: 'tengxun 700 00700 tencent', category: 'hk' },
+            { id: 'rt_hk09988', symbol: '09988', emSecid: '116.09988', name: '阿里巴巴-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'alibaba ali 9988 09988', category: 'hk' },
+            { id: 'rt_hk03690', symbol: '03690', emSecid: '116.03690', name: '美团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'meituan 3690 03690', category: 'hk' },
+            { id: 'rt_hk01810', symbol: '01810', emSecid: '116.01810', name: '小米集团-W', market: 'HK_STOCK', currency: 'HK$', pinyin: 'xiaomi 1810 01810', category: 'hk' },
+            { id: 'rt_hk01211', symbol: '01211', emSecid: '116.01211', name: '比亚迪股份', market: 'HK_STOCK', currency: 'HK$', pinyin: 'biyadi byd 1211 01211', category: 'hk' },
+            { id: 'rt_hk00981', symbol: '00981', emSecid: '116.00981', name: '中芯国际', market: 'HK_STOCK', currency: 'HK$', pinyin: 'zhongxin smic 981 00981', category: 'hk' }
         ];
 
         // 统一外盘期货行情解析器
@@ -1411,6 +1412,7 @@
             const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
             return {
                 secid: sym,
+                emSecid: (meta && meta.emSecid) || null,
                 code: sym.replace('hf_', ''),
                 name: name,
                 marketType: 'GLOBAL_FUTURES',
@@ -1445,6 +1447,7 @@
             if (price <= 0) return null;
             return {
                 secid: sym,
+                emSecid: (meta && meta.emSecid) || null,
                 code: sym.replace('gb_', '').toUpperCase(),
                 name: name,
                 marketType: 'US_STOCK',
@@ -1480,6 +1483,7 @@
             if (price <= 0) return null;
             return {
                 secid: sym,
+                emSecid: (meta && meta.emSecid) || null,
                 code: sym.replace('rt_hk', ''),
                 name: name,
                 marketType: 'HK_STOCK',
@@ -1496,6 +1500,27 @@
                 tradeTime: Date.now(),
                 isLiquid: true
             };
+        }
+
+        // 通用标的东财 SecId 解析器 (跨市场统一解析器：将任何标的/合约转换为东财识别代码)
+        function getInstrumentEastSecId(quote, fallbackSecId) {
+            if (quote && quote.emSecid) return quote.emSecid;
+            const sid = quote ? (quote.secid || quote.code) : fallbackSecId;
+            if (!sid) return null;
+            if (sid.includes('.')) return sid;
+            const meta = ASSET_CATALOG.find(a => a.id === sid || a.symbol === sid || (quote && a.symbol === quote.code));
+            if (meta && meta.emSecid) return meta.emSecid;
+            const cnSecid = secidOf(quote ? (quote.code || quote.secid) : sid);
+            if (cnSecid) return cnSecid;
+            if (quote && quote.marketType === 'US_STOCK') {
+                const pureSym = (quote.code || sid).replace(/^gb_/i, '').toUpperCase();
+                return `105.${pureSym}`;
+            }
+            if (quote && quote.marketType === 'HK_STOCK') {
+                const pureSym = (quote.code || sid).replace(/^rt_hk/i, '');
+                return `116.${pureSym}`;
+            }
+            return null;
         }
 
         // ==================== 多市场外部资产行情缓存与拉取 ====================
@@ -5118,7 +5143,7 @@
         }
 
         // ==================== 多日分时全量数据与 TradingView 级 Overview 引擎 ====================
-        // 计算期货时段对应的真实交易所交易日与时间戳归属 (夜盘 20:00~24:00 计入下一交易日，周五夜盘计入下周一)
+        // 计算国内期货时段对应的真实交易所交易日与时间戳归属 (夜盘 20:00~24:00 计入下一交易日，周五夜盘计入下周一)
         function getFuturesTradingDay(dateStr) {
             if (!dateStr) return { tradingDay: '', shortLabel: '' };
             const parts = dateStr.trim().split(' ');
@@ -5150,208 +5175,271 @@
             };
         }
 
-        // 多日 1 分钟全量数据高精加载通道 (优先东财官方 5 日分时含交易所官方 VWAP，备用新浪)
+        // 全球外盘期货交易日切分算法 (以北京时间 06:00 为界，06:00 之前属于前一交易日，06:00 之后属于当前交易日)
+        function getGlobalFuturesTradingDay(dateStr) {
+            if (!dateStr) return { tradingDay: '', shortLabel: '' };
+            const parts = dateStr.trim().split(' ');
+            const ymd = parts[0];
+            const hm = parts[1] || '00:00';
+            const ymdParts = ymd.split('-').map(Number);
+            const hmParts = hm.split(':').map(Number);
+            const year = ymdParts[0] || 2026;
+            const month = ymdParts[1] || 1;
+            const day = ymdParts[2] || 1;
+            const hour = hmParts[0] || 0;
+            const minute = hmParts[1] || 0;
+
+            const d = new Date(year, month - 1, day, hour, minute);
+            if (hour < 6) {
+                d.setDate(d.getDate() - 1);
+            }
+            const tYear = d.getFullYear();
+            const tMonth = String(d.getMonth() + 1).padStart(2, '0');
+            const tDay = String(d.getDate()).padStart(2, '0');
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            const tWeekday = weekdays[d.getDay()];
+
+            return {
+                tradingDay: `${tYear}-${tMonth}-${tDay}`,
+                shortLabel: `${tMonth}/${tDay} ${tWeekday}`
+            };
+        }
+
+        // 统一东财 5 日逐分历史分时加载器 (通过 JSONP 与 Fetch 双通道弹性加载，天生免除跨域限制，严格遵循 SSOT 字段标准)
+        async function loadEastMoney5DayTrends(eastSecid) {
+            if (!eastSecid) return null;
+            const emUrl = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${eastSecid}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58&ndays=5`;
+            let json = null;
+
+            // ① 优先采用 loadEmJsonp：浏览器环境直接通过 <script> 标签加载，完全免除 CORS 阻碍，实测响应仅 ~30-50ms
+            try {
+                json = await loadEmJsonp(emUrl, 4500);
+            } catch (je) {
+                // 若 JSONP 超时或网络抖动，自动以 fetch 备用兜底
+                try {
+                    const controller = new AbortController();
+                    const tid = setTimeout(() => controller.abort(), 3500);
+                    const resp = await fetch(emUrl, { signal: controller.signal });
+                    clearTimeout(tid);
+                    if (resp.ok) json = await resp.json();
+                } catch (fe) {
+                    console.warn(`[EastMoney] Both JSONP and fetch failed for ${eastSecid}:`, fe);
+                }
+            }
+
+            if (json && json.data && Array.isArray(json.data.trends) && json.data.trends.length > 0) {
+                let preSettlement = 0;
+                if (json.data.preSettlement > 0) preSettlement = json.data.preSettlement;
+                else if (json.data.prePrice > 0) preSettlement = json.data.prePrice;
+                else if (json.data.preClose > 0) preSettlement = json.data.preClose;
+
+                const rawTrends = json.data.trends;
+                const bars = [];
+                for (let i = 0; i < rawTrends.length; i++) {
+                    const parts = rawTrends[i].split(',');
+                    if (parts.length < 8) continue;
+                    const timeStr = parts[0] || '';
+                    const datePart = timeStr.includes(' ') ? timeStr.split(' ')[0] : '';
+                    const timePart = timeStr.includes(' ') ? timeStr.split(' ')[1].substring(0, 5) : '';
+                    // SSOT 权威规范: parts[2] 为现价 (parts[3] 为最高价，严禁取 parts[3] 否则变成上包络线)
+                    const p = parseFloat(parts[2]) || 0;
+                    const o = parseFloat(parts[1]) || p;
+                    const h = parseFloat(parts[3]) || p;
+                    const l = parseFloat(parts[4]) || p;
+                    const v = parseInt(parts[5], 10) || 0;
+                    const officialVwap = parseFloat(parts[7]); // f58 交易所官方逐分累积成交均价
+
+                    // 过滤无效价格点
+                    if (p <= 0) continue;
+
+                    // 每日首根可能 vol=0 且 vwap=0，进行安全兜底
+                    bars.push({
+                        dateStr: timeStr,
+                        date: datePart,
+                        time: timePart,
+                        price: p,
+                        open: o,
+                        high: h,
+                        low: l,
+                        vol: v,
+                        vwap: (officialVwap > 0 ? officialVwap : p)
+                    });
+                }
+
+                if (bars.length > 0) {
+                    return {
+                        preSettlement: preSettlement,
+                        bars: bars
+                    };
+                }
+            }
+            return null;
+        }
+
+        // 多日 1 分钟全量数据高精加载路由中心 (主力通道：东财官方 5 日分时含交易所官方 VWAP；备用通道：新浪)
         async function loadMultiDayTrendBars(secid, symbol) {
             let list = [];
             const quote = activeModalQuote;
             const marketType = quote ? quote.marketType : 'CN_FUTURES';
+            const eastSecid = getInstrumentEastSecId(quote, secid);
 
-            // 0. 美股 5 日 1 分钟全量连续分时加载通道 (如英伟达 NVDA、苹果 AAPL)
-            if (marketType === 'US_STOCK') {
+            // ==========================================
+            // 通道路由第一层：东财 5 日高精通道作为主力 (Primary Channel)
+            // 覆盖外盘期货(CL/GC/OIL/SI/NG)、国内商品期货、美股(NVDA)等全市场
+            // ==========================================
+            if (eastSecid) {
                 try {
-                    const pureSym = (quote.code || secid).replace(/^gb_/i, '').toLowerCase();
-                    const minUrl = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getMinK?symbol=${pureSym}&type=1`;
-                    const resArr = await loadSinaFuturesJsonp(minUrl);
-                    if (resArr && Array.isArray(resArr) && resArr.length > 0) {
-                        let prevDay = '';
-                        cachedTrendOfficialPrePrice = quote.prevSettle || (quote.price - quote.change);
-                        list = resArr.map((item, idx) => {
-                            const dateStr = item.d || '';
-                            const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
-                            const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
-                            const c = parseFloat(item.c) || 0;
-                            const isNewDay = (idx === 0 || datePart !== prevDay);
-                            prevDay = datePart;
-                            return {
-                                dateStr: dateStr,
-                                date: datePart,
-                                time: timePart,
-                                price: c,
-                                open: parseFloat(item.o) || c,
-                                high: parseFloat(item.h) || c,
-                                low: parseFloat(item.l) || c,
-                                vol: parseInt(item.v, 10) || 0,
-                                vwap: c,
-                                tradingDay: datePart,
-                                tradingDayLabel: datePart.slice(5),
-                                isDayStart: isNewDay
-                            };
-                        }).filter(b => b.price > 0);
-                        return list;
+                    const emRes = await loadEastMoney5DayTrends(eastSecid);
+                    if (emRes && emRes.bars && emRes.bars.length > 0) {
+                        if (emRes.preSettlement > 0) {
+                            cachedTrendOfficialPrePrice = emRes.preSettlement;
+                        }
+                        list = emRes.bars;
+                        console.log(`[Router] Successfully loaded ${list.length} 5-day bars via EastMoney Primary Channel (${eastSecid})`);
                     }
-                } catch(e) {
-                    console.warn('[us-stock] Load 5-day 1-min trend failed:', e);
+                } catch (e) {
+                    console.warn(`[Router] EastMoney 5-day channel failed for ${eastSecid}, triggering failover...`, e);
                 }
             }
 
-            // 0.1 全球外盘期货连续分时加载通道 (如美原油 CL、纽约金 GC)
-            if (marketType === 'GLOBAL_FUTURES') {
-                try {
-                    const pureSym = (quote.code || secid).replace(/^hf_/i, '').toUpperCase();
-                    const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSym}`;
-                    const resObj = await loadSinaFuturesJsonp(mUrl);
-                    const rawMinList = (resObj && resObj.minLine_1d) ? resObj.minLine_1d : [];
-                    if (rawMinList && rawMinList.length > 0) {
-                        let prevTDay = '';
-                        cachedTrendOfficialPrePrice = quote.prevSettle || (quote.price - quote.change);
-                        list = rawMinList.map((item, idx) => {
-                            let p = 0;
-                            let timePart = '';
-                            let fullDate = '';
-                            let vwap = 0;
-                            let vol = 0;
-                            if (idx === 0 && item.length >= 10) {
-                                p = parseFloat(item[5]) || 0;
-                                timePart = item[4] || '06:00';
-                                fullDate = item[9] || (item[0] + ' ' + timePart);
-                                vwap = parseFloat(item[8]) || p;
-                                vol = parseInt(item[6]) || 0;
-                            } else {
-                                p = parseFloat(item[1]) || 0;
-                                timePart = item[0] || '';
-                                fullDate = item[item.length - 1] || item[0];
-                                vwap = parseFloat(item[4]) || p;
-                                vol = parseInt(item[2]) || 0;
-                            }
-                            const datePart = fullDate.split(' ')[0] || '';
-                            const isNewDay = (idx === 0 || datePart !== prevTDay);
-                            prevTDay = datePart;
-                            return {
-                                dateStr: fullDate,
-                                date: datePart,
-                                time: timePart,
-                                price: p,
-                                open: p,
-                                high: p,
-                                low: p,
-                                vol: vol,
-                                vwap: vwap > 0 ? vwap : p,
-                                tradingDay: datePart,
-                                tradingDayLabel: datePart.slice(5),
-                                isDayStart: isNewDay
-                            };
-                        }).filter(d => d.price > 0);
-                        return list;
-                    }
-                } catch(e) {
-                    console.warn('[global-futures] Load min line trend failed:', e);
-                }
-            }
-
-            // 1. 优先获取东财官方 5 日逐分历史分时 (天然自带交易所逐分成交均价 VWAP 与昨结基准)
-            if (secid) {
-                try {
-                    const emUrl = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58&ndays=5`;
-                    const resp = await fetch(emUrl);
-                    if (resp.ok) {
-                        const json = await resp.json();
-                        if (json && json.data && Array.isArray(json.data.trends) && json.data.trends.length > 0) {
-                            if (json.data.preSettlement > 0) {
-                                cachedTrendOfficialPrePrice = json.data.preSettlement;
-                            } else if (json.data.prePrice > 0) {
-                                cachedTrendOfficialPrePrice = json.data.prePrice;
-                            }
-                            list = json.data.trends.map(tStr => {
-                                const parts = tStr.split(',');
-                                const timeStr = parts[0] || '';
-                                const datePart = timeStr.includes(' ') ? timeStr.split(' ')[0] : '';
-                                const timePart = timeStr.includes(' ') ? timeStr.split(' ')[1].substring(0, 5) : '';
-                                const p = parseFloat(parts[2]) || 0;
-                                const o = parseFloat(parts[1]) || p;
-                                const h = parseFloat(parts[3]) || p;
-                                const l = parseFloat(parts[4]) || p;
-                                const v = parseInt(parts[5], 10) || 0;
-                                const officialVwap = parseFloat(parts[7]);
+            // ==========================================
+            // 通道路由第二层：新浪作为弹性灾备通道 (Fallback Channel)
+            // ==========================================
+            if (!list || list.length === 0) {
+                console.warn(`[Router] Activating Sina Fallback Channel for market: ${marketType}...`);
+                if (marketType === 'GLOBAL_FUTURES') {
+                    // 外盘期货备用通道：新浪 GlobalFuturesMinLine (单日分时)
+                    try {
+                        const pureSym = (quote.code || secid).replace(/^hf_/i, '').toUpperCase();
+                        const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSym}`;
+                        const resObj = await loadSinaFuturesJsonp(mUrl);
+                        const rawMinList = (resObj && resObj.minLine_1d) ? resObj.minLine_1d : [];
+                        if (rawMinList && rawMinList.length > 0) {
+                            let prevTDay = '';
+                            cachedTrendOfficialPrePrice = quote.prevSettle || (quote.price - quote.change);
+                            list = rawMinList.map((item, idx) => {
+                                let p = 0, timePart = '', fullDate = '', vwap = 0, vol = 0;
+                                if (idx === 0 && item.length >= 10) {
+                                    p = parseFloat(item[5]) || 0;
+                                    timePart = item[4] || '06:00';
+                                    fullDate = item[9] || (item[0] + ' ' + timePart);
+                                    vwap = parseFloat(item[8]) || p;
+                                    vol = parseInt(item[6]) || 0;
+                                } else {
+                                    p = parseFloat(item[1]) || 0;
+                                    timePart = item[0] || '';
+                                    fullDate = item[item.length - 1] || item[0];
+                                    vwap = parseFloat(item[4]) || p;
+                                    vol = parseInt(item[2]) || 0;
+                                }
+                                const datePart = fullDate.split(' ')[0] || '';
                                 return {
-                                    dateStr: timeStr,
+                                    dateStr: fullDate,
                                     date: datePart,
                                     time: timePart,
                                     price: p,
-                                    open: o,
-                                    high: h,
-                                    low: l,
-                                    vol: v,
-                                    vwap: (officialVwap > 0 ? officialVwap : p)
+                                    open: p,
+                                    high: p,
+                                    low: p,
+                                    vol: vol,
+                                    vwap: vwap > 0 ? vwap : p
+                                };
+                            }).filter(d => d.price > 0);
+                        }
+                    } catch (e) {
+                        console.warn('[Router] Sina Global Futures fallback failed:', e);
+                    }
+                } else if (marketType === 'US_STOCK') {
+                    // 美股备用通道：新浪 US_MinKService
+                    try {
+                        const pureSym = (quote.code || secid).replace(/^gb_/i, '').toLowerCase();
+                        const minUrl = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getMinK?symbol=${pureSym}&type=1`;
+                        const resArr = await loadSinaFuturesJsonp(minUrl);
+                        if (resArr && Array.isArray(resArr) && resArr.length > 0) {
+                            cachedTrendOfficialPrePrice = quote.prevSettle || (quote.price - quote.change);
+                            list = resArr.map(item => {
+                                const dateStr = item.d || '';
+                                const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
+                                const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
+                                const c = parseFloat(item.c) || 0;
+                                return {
+                                    dateStr: dateStr,
+                                    date: datePart,
+                                    time: timePart,
+                                    price: c,
+                                    open: parseFloat(item.o) || c,
+                                    high: parseFloat(item.h) || c,
+                                    low: parseFloat(item.l) || c,
+                                    vol: parseInt(item.v, 10) || 0,
+                                    vwap: c
                                 };
                             }).filter(b => b.price > 0);
                         }
+                    } catch (e) {
+                        console.warn('[Router] Sina US Stock fallback failed:', e);
                     }
-                } catch (e) {
-                    console.warn('Load EastMoney 5-day trends failed, trying Sina fallback:', e);
+                } else {
+                    // 国内商品期货备用通道：新浪多日 1 分钟分时 / 单日分时
+                    try {
+                        const min1Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=1`;
+                        const res = await loadSinaFuturesJsonp(min1Url);
+                        if (res && Array.isArray(res) && res.length > 0) {
+                            list = res.map(item => {
+                                const dateStr = item.d || '';
+                                const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
+                                const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
+                                const c = parseFloat(item.c) || 0;
+                                return {
+                                    dateStr, date: datePart, time: timePart, price: c,
+                                    open: parseFloat(item.o) || c, high: parseFloat(item.h) || c,
+                                    low: parseFloat(item.l) || c, vol: parseInt(item.v, 10) || 0, vwap: c
+                                };
+                            }).filter(b => b.price > 0);
+                        }
+                    } catch (e) {
+                        console.warn('[Router] Sina CN Futures multi-min fallback failed:', e);
+                    }
+                    if (!list || list.length === 0) {
+                        try {
+                            const minUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getMinLine?symbol=${symbol}`;
+                            const minArr = await loadSinaFuturesJsonp(minUrl);
+                            if (minArr && Array.isArray(minArr) && minArr.length > 0) {
+                                list = minArr.map(item => ({
+                                    dateStr: item[6] ? `${item[6]} ${item[0]}:00` : item[0],
+                                    date: item[6] || '',
+                                    time: item[0] || '',
+                                    price: parseFloat(item[1]) || 0,
+                                    open: parseFloat(item[1]) || 0,
+                                    high: parseFloat(item[1]) || 0,
+                                    low: parseFloat(item[1]) || 0,
+                                    vwap: parseFloat(item[2]) || parseFloat(item[1]) || 0,
+                                    vol: parseInt(item[3], 10) || 0
+                                })).filter(d => d.price > 0);
+                            }
+                        } catch (e) {
+                            console.warn('[Router] Sina CN Futures single min fallback failed:', e);
+                        }
+                    }
                 }
             }
 
-            // 2. 备用通道 1：新浪 1 分钟多日分时接口 (1023 根，约 3~5 个交易日)
-            if (!list || list.length === 0) {
-                try {
-                    const min1Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=1`;
-                    const res = await loadSinaFuturesJsonp(min1Url);
-                    if (res && Array.isArray(res) && res.length > 0) {
-                        list = res.map(item => {
-                            const dateStr = item.d || '';
-                            const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
-                            const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
-                            const c = parseFloat(item.c) || 0;
-                            const o = parseFloat(item.o) || c;
-                            const h = parseFloat(item.h) || c;
-                            const l = parseFloat(item.l) || c;
-                            const v = parseInt(item.v, 10) || 0;
-                            return {
-                                dateStr,
-                                date: datePart,
-                                time: timePart,
-                                price: c,
-                                open: o,
-                                high: h,
-                                low: l,
-                                vol: v,
-                                vwap: c
-                            };
-                        }).filter(b => b.price > 0);
-                    }
-                } catch (e) {
-                    console.warn('Load multi-day 1-min line failed:', e);
-                }
-            }
-
-            // 3. 备用通道 2：新浪单日 getMinLine (含交易所官方 VWAP 均价)
-            if (!list || list.length === 0) {
-                try {
-                    const minUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getMinLine?symbol=${symbol}`;
-                    const minArr = await loadSinaFuturesJsonp(minUrl);
-                    if (minArr && Array.isArray(minArr) && minArr.length > 0) {
-                        list = minArr.map(item => ({
-                            dateStr: item[6] ? `${item[6]} ${item[0]}:00` : item[0],
-                            date: item[6] || '',
-                            time: item[0] || '',
-                            price: parseFloat(item[1]) || 0,
-                            open: parseFloat(item[1]) || 0,
-                            high: parseFloat(item[1]) || 0,
-                            low: parseFloat(item[1]) || 0,
-                            vwap: parseFloat(item[2]) || parseFloat(item[1]) || 0,
-                            vol: parseInt(item[3], 10) || 0
-                        })).filter(d => d.price > 0);
-                    }
-                } catch (e) {
-                    console.warn('Load single-day min line failed:', e);
-                }
-            }
-
-            // 4. 严谨标定交易日断开分界点 (绝不在跨日时拉斜线连接)
+            // ==========================================
+            // 严谨交易日划分与日界断开点标定 (各市场特征独立算法，绝不跨日拉斜线)
+            // ==========================================
             if (list.length > 0) {
                 let prevTDay = '';
                 list.forEach((b, idx) => {
-                    const tInfo = getFuturesTradingDay(b.dateStr);
+                    let tInfo;
+                    if (marketType === 'GLOBAL_FUTURES') {
+                        // 外盘期货 06:00 切分
+                        tInfo = getGlobalFuturesTradingDay(b.dateStr);
+                    } else if (marketType === 'US_STOCK' || marketType === 'HK_STOCK') {
+                        // 股票按自然日切分
+                        tInfo = { tradingDay: b.date, shortLabel: b.date.slice(5) };
+                    } else {
+                        // 内盘期货 20:00 夜盘切分
+                        tInfo = getFuturesTradingDay(b.dateStr);
+                    }
                     b.tradingDay = tInfo.tradingDay;
                     b.tradingDayLabel = tInfo.shortLabel;
                     if (idx === 0) {
@@ -5814,6 +5902,40 @@
             return klines;
         }
 
+        // 将东财 1 分钟高精连续趋势 Bar 聚合成任意周期的 K 柱 (5分、15分、60分等)
+        function aggregateTrendBarsToKlines(trendBars, freq) {
+            if (!Array.isArray(trendBars) || trendBars.length === 0) return [];
+            const klines = [];
+            const groupSize = Math.max(1, freq);
+            for (let i = 0; i < trendBars.length; i += groupSize) {
+                const chunk = trendBars.slice(i, i + groupSize);
+                if (!chunk.length) continue;
+                const open = chunk[0].open || chunk[0].price;
+                const close = chunk[chunk.length - 1].price;
+                let high = -Infinity;
+                let low = Infinity;
+                let totalVol = 0;
+                chunk.forEach(b => {
+                    const bh = (b.high !== undefined && b.high > 0) ? b.high : b.price;
+                    const bl = (b.low !== undefined && b.low > 0) ? b.low : b.price;
+                    if (bh > high) high = bh;
+                    if (bl < low) low = bl;
+                    totalVol += (b.vol || 0);
+                });
+                if (high === -Infinity) high = open;
+                if (low === Infinity) low = open;
+                klines.push({
+                    date: chunk[chunk.length - 1].dateStr || chunk[chunk.length - 1].time,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close,
+                    vol: totalVol
+                });
+            }
+            return klines;
+        }
+
         // 绘制多周期 K 线图 (新浪 1023 根真实多日历史数据库，初始化精准截取 150 根/80 根)
         async function drawKlineChart(ctx, w, h, klt, reqLimit) {
             const quote = activeModalQuote;
@@ -5859,12 +5981,29 @@
                             })).filter(k => k.close > 0 && k.high >= k.low);
                         }
                     } else {
-                        // 分钟级 K 线：从实时 1 分钟线聚合对应分钟 K 柱
-                        const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSymbol}`;
-                        const mObj = await loadSinaFuturesJsonp(mUrl);
-                        const rawMinList = (mObj && mObj.minLine_1d) ? mObj.minLine_1d : [];
-                        if (rawMinList && rawMinList.length > 0) {
-                            cachedFullKlines = aggregateMinLinesToKlines(rawMinList, parseInt(klt) || 15);
+                        // 分钟级 K 线：优先从东财 5 日全量逐分数据聚合 (主力通道提供多达 5 个交易日的连续分钟 K 柱)
+                        let emBars = null;
+                        const eastSecid = getInstrumentEastSecId(quote, activeModalSecId);
+                        if (eastSecid) {
+                            try {
+                                const emRes = await loadEastMoney5DayTrends(eastSecid);
+                                if (emRes && emRes.bars && emRes.bars.length > 0) {
+                                    emBars = emRes.bars;
+                                }
+                            } catch(e) {
+                                console.warn('[Router] Load EastMoney bars for global futures kline failed:', e);
+                            }
+                        }
+                        if (emBars && emBars.length > 0) {
+                            cachedFullKlines = aggregateTrendBarsToKlines(emBars, parseInt(klt) || 15);
+                        } else {
+                            // 备用通道：从新浪实时 1 分钟线聚合对应分钟 K 柱
+                            const mUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSymbol}`;
+                            const mObj = await loadSinaFuturesJsonp(mUrl);
+                            const rawMinList = (mObj && mObj.minLine_1d) ? mObj.minLine_1d : [];
+                            if (rawMinList && rawMinList.length > 0) {
+                                cachedFullKlines = aggregateMinLinesToKlines(rawMinList, parseInt(klt) || 15);
+                            }
                         }
                     }
                 } else {
