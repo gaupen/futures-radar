@@ -4146,6 +4146,12 @@
             const quote = allPhysicalQuotes.find(q => q.secid === secid) || focusQuotes.find(q => q.secid === secid) || externalQuotesMap[secid];
             if (!quote) return;
 
+            // 切换合约/标的时，彻底清空上一标的的图表缓存与昨结基准价，严防跨标的价格污染
+            cachedTrendOfficialPrePrice = 0;
+            cachedTrendFullBars = [];
+            cachedTrendSymbol = '';
+            cachedFullKlines = [];
+
             activeModalSecId = secid;
             activeModalQuote = quote;
 
@@ -5205,25 +5211,36 @@
             };
         }
 
-        // 统一东财 5 日逐分历史分时加载器 (通过 JSONP 与 Fetch 双通道弹性加载，天生免除跨域限制，严格遵循 SSOT 字段标准)
+        // 统一东财 5 日逐分历史分时加载器 (优先通过 Cloudflare Worker 同源代理端点拉取，免除跨域；直连作为备用)
         async function loadEastMoney5DayTrends(eastSecid) {
             if (!eastSecid) return null;
-            const emUrl = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${eastSecid}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58&ndays=5`;
             let json = null;
 
-            // ① 优先采用 loadEmJsonp：浏览器环境直接通过 <script> 标签加载，完全免除 CORS 阻碍，实测响应仅 ~30-50ms
+            // ① 优先走 Worker 同源代理端点（免除浏览器 CORS 与防盗链限制，实测极速响应）
             try {
-                json = await loadEmJsonp(emUrl, 4500);
-            } catch (je) {
-                // 若 JSONP 超时或网络抖动，自动以 fetch 备用兜底
+                const proxyUrl = `/api/eastmoney/trends?secid=${eastSecid}&ndays=5`;
+                const controller = new AbortController();
+                const tid = setTimeout(() => controller.abort(), 4500);
+                const resp = await fetch(proxyUrl, { signal: controller.signal });
+                clearTimeout(tid);
+                if (resp.ok) {
+                    json = await resp.json();
+                }
+            } catch (pe) {
+                console.warn(`[EastMoney] Worker proxy failed for ${eastSecid}, trying direct fetch:`, pe);
+            }
+
+            // ② 备用：直连 push2his.eastmoney.com
+            if (!json || !json.data || !Array.isArray(json.data.trends) || json.data.trends.length === 0) {
                 try {
+                    const directUrl = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${eastSecid}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=5`;
                     const controller = new AbortController();
                     const tid = setTimeout(() => controller.abort(), 3500);
-                    const resp = await fetch(emUrl, { signal: controller.signal });
+                    const resp = await fetch(directUrl, { signal: controller.signal });
                     clearTimeout(tid);
                     if (resp.ok) json = await resp.json();
                 } catch (fe) {
-                    console.warn(`[EastMoney] Both JSONP and fetch failed for ${eastSecid}:`, fe);
+                    // 直连失败
                 }
             }
 
@@ -5283,6 +5300,14 @@
             const marketType = quote ? quote.marketType : 'CN_FUTURES';
             const eastSecid = getInstrumentEastSecId(quote, secid);
 
+            // 彻底清空并重置上一标的昨结，先以当前标的基准昨结/昨收初始化兜底
+            cachedTrendOfficialPrePrice = 0;
+            if (quote && quote.prevSettle > 0) {
+                cachedTrendOfficialPrePrice = quote.prevSettle;
+            } else if (quote && quote.price > 0 && typeof quote.change === 'number') {
+                cachedTrendOfficialPrePrice = quote.price - quote.change;
+            }
+
             // ==========================================
             // 通道路由第一层：东财 5 日高精通道作为主力 (Primary Channel)
             // 覆盖外盘期货(CL/GC/OIL/SI/NG)、国内商品期货、美股(NVDA)等全市场
@@ -5315,8 +5340,6 @@
                         const resObj = await loadSinaFuturesJsonp(mUrl);
                         const rawMinList = (resObj && resObj.minLine_1d) ? resObj.minLine_1d : [];
                         if (rawMinList && rawMinList.length > 0) {
-                            let prevTDay = '';
-                            cachedTrendOfficialPrePrice = quote.prevSettle || (quote.price - quote.change);
                             list = rawMinList.map((item, idx) => {
                                 let p = 0, timePart = '', fullDate = '', vwap = 0, vol = 0;
                                 if (idx === 0 && item.length >= 10) {
@@ -5350,55 +5373,110 @@
                         console.warn('[Router] Sina Global Futures fallback failed:', e);
                     }
                 } else if (marketType === 'US_STOCK') {
-                    // 美股备用通道：新浪 US_MinKService
+                    // 美股通道：新浪 US_MinlineNService 官方 5 日逐分线 (1950点 + 官方 VWAP)
                     try {
                         const pureSym = (quote.code || secid).replace(/^gb_/i, '').toLowerCase();
-                        const minUrl = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getMinK?symbol=${pureSym}&type=1`;
-                        const resArr = await loadSinaFuturesJsonp(minUrl);
-                        if (resArr && Array.isArray(resArr) && resArr.length > 0) {
-                            cachedTrendOfficialPrePrice = quote.prevSettle || (quote.price - quote.change);
-                            list = resArr.map(item => {
-                                const dateStr = item.d || '';
-                                const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
-                                const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
-                                const c = parseFloat(item.c) || 0;
-                                return {
-                                    dateStr: dateStr,
-                                    date: datePart,
+                        const minUrl = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinlineNService.getMinline?symbol=${pureSym}&day=5`;
+                        const resStr = await loadSinaFuturesJsonp(minUrl);
+                        if (resStr && typeof resStr === 'string' && resStr.length > 20) {
+                            const toks = resStr.replace(/\s+/g, ';').split(';').filter(Boolean);
+                            let curDate = '';
+                            let prevDay = '';
+                            let parsedBars = [];
+                            let officialPreClose = 0;
+                            toks.forEach(t => {
+                                const p = t.split(',');
+                                let timePart = '';
+                                let vol = 0, vwap = 0, price = 0;
+                                if (p.length === 6) {
+                                    curDate = p[0];
+                                    timePart = (p[1] || '').substring(0, 5);
+                                    vol = parseInt(p[2], 10) || 0;
+                                    vwap = parseFloat(p[3]) || 0;
+                                    price = parseFloat(p[4]) || 0;
+                                    officialPreClose = parseFloat(p[5]) || officialPreClose;
+                                } else if (p.length === 4) {
+                                    timePart = (p[0] || '').substring(0, 5);
+                                    vol = parseInt(p[1], 10) || 0;
+                                    vwap = parseFloat(p[2]) || 0;
+                                    price = parseFloat(p[3]) || 0;
+                                } else {
+                                    return;
+                                }
+                                if (price <= 0) return;
+                                const isNewDay = (!prevDay || curDate !== prevDay);
+                                prevDay = curDate;
+                                parsedBars.push({
+                                    dateStr: `${curDate} ${timePart}`,
+                                    date: curDate,
                                     time: timePart,
-                                    price: c,
-                                    open: parseFloat(item.o) || c,
-                                    high: parseFloat(item.h) || c,
-                                    low: parseFloat(item.l) || c,
-                                    vol: parseInt(item.v, 10) || 0,
-                                    vwap: c
-                                };
-                            }).filter(b => b.price > 0);
+                                    price: price,
+                                    open: price,
+                                    high: price,
+                                    low: price,
+                                    vol: vol,
+                                    vwap: (vwap > 0 ? vwap : price),
+                                    tradingDay: curDate,
+                                    tradingDayLabel: curDate.slice(5),
+                                    isDayStart: isNewDay
+                                });
+                            });
+                            if (parsedBars.length > 0) {
+                                list = parsedBars;
+                                if (officialPreClose > 0) cachedTrendOfficialPrePrice = officialPreClose;
+                            }
                         }
                     } catch (e) {
-                        console.warn('[Router] Sina US Stock fallback failed:', e);
+                        console.warn('[Router] Sina US Stock 5-day minline failed:', e);
                     }
                 } else {
-                    // 国内商品期货备用通道：新浪多日 1 分钟分时 / 单日分时
+                    // 国内商品期货备用通道：优先新浪 5 日分时 (getFourDaysLine，实测返回完整 5 个交易日与官方昨结)
                     try {
-                        const min1Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=1`;
-                        const res = await loadSinaFuturesJsonp(min1Url);
+                        const min4Url = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFourDaysLine?symbol=${symbol}`;
+                        const res = await loadSinaFuturesJsonp(min4Url);
                         if (res && Array.isArray(res) && res.length > 0) {
-                            list = res.map(item => {
-                                const dateStr = item.d || '';
-                                const datePart = dateStr.includes(' ') ? dateStr.split(' ')[0] : '';
-                                const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1].substring(0, 5) : '';
-                                const c = parseFloat(item.c) || 0;
-                                return {
-                                    dateStr, date: datePart, time: timePart, price: c,
-                                    open: parseFloat(item.o) || c, high: parseFloat(item.h) || c,
-                                    low: parseFloat(item.l) || c, vol: parseInt(item.v, 10) || 0, vwap: c
-                                };
-                            }).filter(b => b.price > 0);
+                            const allBars = [];
+                            let lastPreSettle = 0;
+                            res.forEach(dayArr => {
+                                if (!Array.isArray(dayArr) || dayArr.length === 0) return;
+                                let dayDate = '';
+                                if (dayArr[0] && dayArr[0].length >= 7) {
+                                    dayDate = dayArr[0][6] || '';
+                                    if (dayArr[0][5]) lastPreSettle = parseFloat(dayArr[0][5]) || lastPreSettle;
+                                }
+                                dayArr.forEach((item, idx) => {
+                                    const timePart = item[0] || '';
+                                    const p = parseFloat(item[1]) || 0;
+                                    const vwap = parseFloat(item[2]) || p;
+                                    const v = parseInt(item[3], 10) || 0;
+                                    if (p <= 0) return;
+                                    const dateStr = dayDate ? `${dayDate} ${timePart}` : timePart;
+                                    allBars.push({
+                                        dateStr,
+                                        date: dayDate,
+                                        time: timePart,
+                                        price: p,
+                                        open: p,
+                                        high: p,
+                                        low: p,
+                                        vol: v,
+                                        vwap: (vwap > 0 ? vwap : p),
+                                        tradingDay: dayDate,
+                                        tradingDayLabel: dayDate ? dayDate.slice(5) : '',
+                                        isDayStart: (idx === 0)
+                                    });
+                                });
+                            });
+                            if (allBars.length > 0) {
+                                list = allBars;
+                                if (lastPreSettle > 0) cachedTrendOfficialPrePrice = lastPreSettle;
+                            }
                         }
                     } catch (e) {
-                        console.warn('[Router] Sina CN Futures multi-min fallback failed:', e);
+                        console.warn('[Router] Sina CN Futures 4-day minline failed:', e);
                     }
+
+                    // 备用兜底：若 getFourDaysLine 异常，降级到单日 getMinLine
                     if (!list || list.length === 0) {
                         try {
                             const minUrl = `https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getMinLine?symbol=${symbol}`;
