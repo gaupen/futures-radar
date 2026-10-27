@@ -946,6 +946,26 @@
             }
             .modal-title { font-size: 15px; }
             .modal-price-hero { font-size: 18px; }
+            .modal-nav {
+                padding: 4px 10px;
+                min-height: 38px;
+                height: 38px;
+            }
+            .modal-nav-left {
+                width: 100%;
+                display: flex;
+                gap: 5px;
+            }
+            .chart-tab-btn {
+                flex: 1;
+                padding: 6px 0;
+                text-align: center;
+                font-size: 13px;
+                min-width: 0;
+            }
+            .modal-nav-status {
+                display: none !important;
+            }
             .modal-nav-arrow-btn, .modal-close-btn {
                 min-height: 32px !important;
                 height: 32px;
@@ -1347,11 +1367,11 @@
 
             <div class="modal-nav">
                 <div class="modal-nav-left">
-                    <button class="chart-tab-btn" id="chart-tab-trend" onclick="switchChartType('trend')">📈 当日分时图</button>
-                    <button class="chart-tab-btn" id="chart-tab-k5" onclick="switchChartType('5')">🕯️ 5分钟K</button>
-                    <button class="chart-tab-btn active" id="chart-tab-k15" onclick="switchChartType('15')">🕯️ 15分钟K</button>
-                    <button class="chart-tab-btn" id="chart-tab-k60" onclick="switchChartType('60')">🕯️ 60分钟K</button>
-                    <button class="chart-tab-btn" id="chart-tab-kday" onclick="switchChartType('101')">🕯️ 日K线</button>
+                    <button class="chart-tab-btn" id="chart-tab-trend" onclick="switchChartType('trend')">分时</button>
+                    <button class="chart-tab-btn" id="chart-tab-k5" onclick="switchChartType('5')">5分</button>
+                    <button class="chart-tab-btn active" id="chart-tab-k15" onclick="switchChartType('15')">15分</button>
+                    <button class="chart-tab-btn" id="chart-tab-k60" onclick="switchChartType('60')">60分</button>
+                    <button class="chart-tab-btn" id="chart-tab-kday" onclick="switchChartType('101')">日线</button>
                 </div>
                 <div id="modal-status-feedback" class="modal-nav-status">
                     <span id="chart-status-text">⚡ 准备就绪</span>
@@ -4045,7 +4065,17 @@
                 }
             }
             document.getElementById('modal-name').textContent = displayName || quote.name || quote.secid;
-            document.getElementById('modal-code').textContent = quote.secid;
+            const modalCodeEl = document.getElementById('modal-code');
+            if (modalCodeEl) {
+                if (!quote.marketType || quote.marketType === 'CN_FUTURES') {
+                    modalCodeEl.textContent = '';
+                    modalCodeEl.style.display = 'none';
+                } else {
+                    const cleanCode = (quote.code || quote.secid || '').replace(/^\d+\./, '').replace(/^gb_/i, '').replace(/^hf_/i, '').toUpperCase();
+                    modalCodeEl.textContent = cleanCode;
+                    modalCodeEl.style.display = cleanCode ? 'inline' : 'none';
+                }
+            }
 
             const sessionTagEl = document.getElementById('modal-tag-session');
             if (sessionTagEl) {
@@ -4329,15 +4359,12 @@
             }
         }
 
-        // Overview 迷你小地图点击与拖拽命中检测 (分时图与 K 线图共用)
+        // Overview 迷你小地图点击与拖拽命中检测 (分时图与 K 线图共用，仅保留平移与点击跳转，彻底禁用范围缩放避免误触)
         function getOverviewHit(px, py) {
             const rect = (currentChartType === 'trend') ? trendOverviewRect : klineOverviewRect;
             if (!rect) return null;
             const { x, y, w, h, vx1, vx2 } = rect;
-            // 触控/鼠标扩大上下判定区，更易抓取滑块
             if (py < y - 6 || py > y + h + 8 || px < x - 8 || px > x + w + 8) return null;
-            if (Math.abs(px - vx1) <= 10) return 'left';
-            if (Math.abs(px - vx2) <= 10) return 'right';
             if (px >= vx1 && px <= vx2) return 'pan';
             return 'jump';
         }
@@ -4424,46 +4451,22 @@
                         const dx = px - overviewDragState.startX;
                         const dxRatio = dx / trendOverviewRect.w;
                         const minSpan = 0.05;
-                        if (overviewDragState.mode === 'pan') {
-                            const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
-                            let nStart = overviewDragState.startLeft + dxRatio;
-                            let nEnd = overviewDragState.startRight + dxRatio;
-                            if (nStart < 0) { nStart = 0; nEnd = span; }
-                            if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
-                            trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
-                            trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
-                        } else if (overviewDragState.mode === 'left') {
-                            trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
-                        } else if (overviewDragState.mode === 'right') {
-                            trendViewEndRatio = Math.min(1.0, Math.max(overviewDragState.startLeft + minSpan, overviewDragState.startRight + dxRatio));
-                        }
+                        const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
+                        let nStart = overviewDragState.startLeft + dxRatio;
+                        let nEnd = overviewDragState.startRight + dxRatio;
+                        if (nStart < 0) { nStart = 0; nEnd = span; }
+                        if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
+                        trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
+                        trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
                         redrawTrendCanvasOnly();
                     } else if (overviewDragState.target === 'kline' && klineOverviewRect && cachedFullKlines) {
                         const dx = px - overviewDragState.startX;
                         const dxRatio = dx / klineOverviewRect.w;
                         const total = overviewDragState.totalBars;
                         const barDelta = Math.round(dxRatio * total);
-                        if (overviewDragState.mode === 'pan') {
-                            let nv = overviewDragState.initialViewStart - barDelta;
-                            nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
-                            if (nv !== chartViewStart) {
-                                chartViewStart = nv;
-                                redrawKlineCanvasOnly();
-                            }
-                        } else if (overviewDragState.mode === 'left') {
-                            let newCount = overviewDragState.initialCount - barDelta;
-                            newCount = Math.max(20, Math.min(total, newCount));
-                            let nv = overviewDragState.initialViewStart;
-                            nv = Math.max(0, Math.min(total - newCount, nv));
-                            currentVisibleCount = newCount;
-                            chartViewStart = nv;
-                            redrawKlineCanvasOnly();
-                        } else if (overviewDragState.mode === 'right') {
-                            let newCount = overviewDragState.initialCount + barDelta;
-                            newCount = Math.max(20, Math.min(total, newCount));
-                            let nv = overviewDragState.initialViewStart - barDelta;
-                            nv = Math.max(0, Math.min(total - newCount, nv));
-                            currentVisibleCount = newCount;
+                        let nv = overviewDragState.initialViewStart - barDelta;
+                        nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
+                        if (nv !== chartViewStart) {
                             chartViewStart = nv;
                             redrawKlineCanvasOnly();
                         }
@@ -4494,12 +4497,13 @@
 
                     if (Math.abs(dx) > 6 || Math.abs(dy) > 6) touchState.moved = true;
 
-                    // 垂直滑动：切换合约
-                    if (!touchState.swipedContract && Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx) * 1.25) {
+                    // 垂直滑动：切换合约 (行程阈值加大至 85px，角度必须陡峭，严防微动误触)
+                    const SWIPE_NAV_THRESHOLD = 85;
+                    if (!touchState.swipedContract && Math.abs(dy) > SWIPE_NAV_THRESHOLD && Math.abs(dy) > Math.abs(dx) * 1.8) {
                         touchState.swipedContract = true;
-                        if (dy < -42) {
+                        if (dy < -SWIPE_NAV_THRESHOLD) {
                             navContract(1);
-                        } else if (dy > 42) {
+                        } else if (dy > SWIPE_NAV_THRESHOLD) {
                             navContract(-1);
                         }
                         return;
@@ -4571,7 +4575,7 @@
                             redrawTrendCanvasOnly();
                             overviewDragState = { target: 'trend', mode: 'pan', startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
                         } else {
-                            overviewDragState = { target: 'trend', mode: hit, startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
+                            overviewDragState = { target: 'trend', mode: 'pan', startX: px, startLeft: trendViewStartRatio, startRight: trendViewEndRatio };
                         }
                     } else if (currentChartType !== 'trend' && klineOverviewRect && cachedFullKlines) {
                         const totalBars = cachedFullKlines.length;
@@ -4586,10 +4590,10 @@
                             redrawKlineCanvasOnly();
                             overviewDragState = { target: 'kline', mode: 'pan', startX: px, initialViewStart: chartViewStart, initialCount: currentVisibleCount, totalBars };
                         } else {
-                            overviewDragState = { target: 'kline', mode: hit, startX: px, initialViewStart: chartViewStart, initialCount: currentVisibleCount, totalBars };
+                            overviewDragState = { target: 'kline', mode: 'pan', startX: px, initialViewStart: chartViewStart, initialCount: currentVisibleCount, totalBars };
                         }
                     }
-                    canvas.style.cursor = (hit === 'left' || hit === 'right') ? 'ew-resize' : 'grabbing';
+                    canvas.style.cursor = 'grabbing';
                     return;
                 }
 
@@ -4619,52 +4623,28 @@
                 const px = e.clientX - rect.left;
                 const py = e.clientY - rect.top;
 
-                // 拖拽底部 Overview
+                // 拖拽底部 Overview (仅平移)
                 if (overviewDragState) {
                     if (overviewDragState.target === 'trend' && trendOverviewRect) {
                         const dx = px - overviewDragState.startX;
                         const dxRatio = dx / trendOverviewRect.w;
                         const minSpan = 0.05;
-                        if (overviewDragState.mode === 'pan') {
-                            const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
-                            let nStart = overviewDragState.startLeft + dxRatio;
-                            let nEnd = overviewDragState.startRight + dxRatio;
-                            if (nStart < 0) { nStart = 0; nEnd = span; }
-                            if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
-                            trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
-                            trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
-                        } else if (overviewDragState.mode === 'left') {
-                            trendViewStartRatio = Math.max(0, Math.min(overviewDragState.startRight - minSpan, overviewDragState.startLeft + dxRatio));
-                        } else if (overviewDragState.mode === 'right') {
-                            trendViewEndRatio = Math.min(1.0, Math.max(overviewDragState.startLeft + minSpan, overviewDragState.startRight + dxRatio));
-                        }
+                        const span = Math.max(minSpan, overviewDragState.startRight - overviewDragState.startLeft);
+                        let nStart = overviewDragState.startLeft + dxRatio;
+                        let nEnd = overviewDragState.startRight + dxRatio;
+                        if (nStart < 0) { nStart = 0; nEnd = span; }
+                        if (nEnd > 1) { nEnd = 1; nStart = 1 - span; }
+                        trendViewStartRatio = Math.max(0, Math.min(1 - span, nStart));
+                        trendViewEndRatio = Math.max(span, Math.min(1, nEnd));
                         redrawTrendCanvasOnly();
                     } else if (overviewDragState.target === 'kline' && klineOverviewRect && cachedFullKlines) {
                         const dx = px - overviewDragState.startX;
                         const dxRatio = dx / klineOverviewRect.w;
                         const total = overviewDragState.totalBars;
                         const barDelta = Math.round(dxRatio * total);
-                        if (overviewDragState.mode === 'pan') {
-                            let nv = overviewDragState.initialViewStart - barDelta;
-                            nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
-                            if (nv !== chartViewStart) {
-                                chartViewStart = nv;
-                                redrawKlineCanvasOnly();
-                            }
-                        } else if (overviewDragState.mode === 'left') {
-                            let newCount = overviewDragState.initialCount - barDelta;
-                            newCount = Math.max(20, Math.min(total, newCount));
-                            let nv = overviewDragState.initialViewStart;
-                            nv = Math.max(0, Math.min(total - newCount, nv));
-                            currentVisibleCount = newCount;
-                            chartViewStart = nv;
-                            redrawKlineCanvasOnly();
-                        } else if (overviewDragState.mode === 'right') {
-                            let newCount = overviewDragState.initialCount + barDelta;
-                            newCount = Math.max(20, Math.min(total, newCount));
-                            let nv = overviewDragState.initialViewStart - barDelta;
-                            nv = Math.max(0, Math.min(total - newCount, nv));
-                            currentVisibleCount = newCount;
+                        let nv = overviewDragState.initialViewStart - barDelta;
+                        nv = Math.max(0, Math.min(total - currentVisibleCount, nv));
+                        if (nv !== chartViewStart) {
                             chartViewStart = nv;
                             redrawKlineCanvasOnly();
                         }
@@ -4710,10 +4690,10 @@
                 // 正常悬浮移动：设置鼠标光标样式并显示十字线报价详情与坐标轴浮动标签
                 if (e.target === canvas) {
                     const hit = getOverviewHit(px, py);
-                    if (hit === 'left' || hit === 'right') {
-                        canvas.style.cursor = 'ew-resize';
-                    } else if (hit === 'pan') {
+                    if (hit === 'pan') {
                         canvas.style.cursor = 'grab';
+                    } else if (hit === 'jump') {
+                        canvas.style.cursor = 'pointer';
                     } else {
                         canvas.style.cursor = 'crosshair';
                         showBarInfoAtX(px, py);
@@ -5789,18 +5769,10 @@
                     }
                 }
 
-                // 激活视口框边框 (精致清晰)
+                // 激活视口框边框 (纯净极简选框，禁用两端小把手，杜绝误触变形)
                 ctx.strokeStyle = 'rgba(88, 166, 255, 0.85)';
                 ctx.lineWidth = 1.2;
                 ctx.strokeRect(vx1, overviewTop, vWidth, overviewH);
-
-                // 左右调节把手：细腻微手柄 (不喧宾夺主，不干扰视线)
-                const handleW = 2;
-                const gripH = Math.max(10, overviewH - 10);
-                const gripY = overviewTop + (overviewH - gripH) / 2;
-                ctx.fillStyle = 'rgba(121, 192, 255, 0.75)';
-                ctx.fillRect(vx1 + 1, gripY, handleW, gripH);
-                ctx.fillRect(vx2 - handleW - 1, gripY, handleW, gripH);
 
                 // 缓存 Overview 几何位置
                 trendOverviewRect = {
@@ -6491,18 +6463,10 @@
                     }
                 }
 
-                // 激活视口框边框 (精致清晰)
+                // 激活视口框边框 (纯净极简选框，禁用两端小把手，杜绝误触变形)
                 ctx.strokeStyle = 'rgba(88, 166, 255, 0.85)';
                 ctx.lineWidth = 1.2;
                 ctx.strokeRect(vx1, overviewTop, vWidth, overviewH);
-
-                // 左右调节细握柄
-                const handleW = 2;
-                const gripH = Math.max(10, overviewH - 10);
-                const gripY = overviewTop + (overviewH - gripH) / 2;
-                ctx.fillStyle = 'rgba(121, 192, 255, 0.75)';
-                ctx.fillRect(vx1 + 1, gripY, handleW, gripH);
-                ctx.fillRect(vx2 - handleW - 1, gripY, handleW, gripH);
 
                 // 记录 K 线 Overview 几何布局用于拖拽
                 klineOverviewRect = {
