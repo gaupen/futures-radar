@@ -3021,6 +3021,8 @@
                     const price = parseFloat(parts[8]) || 0;
                     const prevSettle = parseFloat(parts[10]) || 0;
                     const vol = parseInt(parts[14]) || 0;
+                    const quoteDate = (parts[17] || '').trim(); // 交易所公布的该笔行情归属交易日 YYYY-MM-DD
+                    const quoteTime = (parts[1] || '').trim();  // 行情时间 HHMMSS
 
                     if (price <= 0) continue;
 
@@ -3047,6 +3049,8 @@
                         low: low,
                         open: open,
                         prevSettle: prevSettle,
+                        quoteDate: quoteDate,
+                        quoteTime: quoteTime,
                         tradeTime: Date.now(),
                         isLiquid: isLiquid
                     });
@@ -3119,49 +3123,12 @@
             if (timerText) timerText.textContent = '重扫中';
 
             try {
-                // 0) 休市且不在开盘前窗口：优先读取云端收盘快照（KV 永久兜底，秒级呈现）
-                //    命中即直接渲染，一个东财请求都不发；避免收盘/周末接口抓不到的风险。
-                if (!isTradingNow() && !inPreOpenWindow()) {
-                    const snap = await fetchCloudSnapshot();
-                    if (snap && snap.ts) {
-                        const snapQuotes = buildQuoteMapFromRaw(snap.diff);
-                        const hasUp = snapQuotes.some(q => q.changePercent > 0);
-                        const hasDown = snapQuotes.some(q => q.changePercent < 0);
-                        // 校验快照完整性：包含有效合约，杜绝残缺单向快照阻断全盘扫描
-                        if (snapQuotes.length >= 25 && hasUp && hasDown) {
-                            allPhysicalQuotes = snapQuotes;
-                            isStep1Ready = true;
-                            lastGoodQuotes = snapQuotes.slice();
-                            lastGoodTs = snap.ts;
-                            quoteSource = 'snapshot';
-                            dataMode = 'live';
-                            finishScanPass();
-                            return;
-                        }
-                    }
-                }
-
-                // 1) 主通道：新浪财经批量直连 (极速并发，无跨域限制)
+                // 1) 主通道：新浪财经批量直连 (极速并发，无跨域限制，全天候 24h 返回最新真实成交或收盘价)
                 quoteSource = 'sina';
                 let quotes = await fetchQuotesViaSinaBatch(buildContractPool());
 
-                // 3) 终极兜底：实时上游全挂时，尝试从云端收盘快照恢复，绝不给用户看白板！
+                // 2) 兜底保护：网络断开或接口异常时，优先使用内存最近一次有效行情
                 if (!quotes || quotes.length === 0) {
-                    const snap = await fetchCloudSnapshot();
-                    if (snap && snap.ts) {
-                        const snapQuotes = buildQuoteMapFromRaw(snap.diff);
-                        if (snapQuotes.length >= 25) {
-                            allPhysicalQuotes = snapQuotes;
-                            isStep1Ready = true;
-                            lastGoodQuotes = snapQuotes.slice();
-                            lastGoodTs = snap.ts;
-                            quoteSource = 'snapshot';
-                            dataMode = 'cache';
-                            finishScanPass();
-                            return;
-                        }
-                    }
-
                     if (lastGoodQuotes.length) {
                         allPhysicalQuotes = lastGoodQuotes.slice();
                         dataMode = 'cache';
@@ -4497,9 +4464,12 @@
 
                     if (Math.abs(dx) > 6 || Math.abs(dy) > 6) touchState.moved = true;
 
-                    // 垂直滑动：切换合约 (行程阈值加大至 85px，角度必须陡峭，严防微动误触)
-                    const SWIPE_NAV_THRESHOLD = 85;
-                    if (!touchState.swipedContract && Math.abs(dy) > SWIPE_NAV_THRESHOLD && Math.abs(dy) > Math.abs(dx) * 1.8) {
+                    // 垂直滑动：切换合约 (行程阈值加大至 160px，严格限制水平偏移 < 60px 且垂直比率 > 2.8，彻底杜绝误触)
+                    const SWIPE_NAV_THRESHOLD = 160;
+                    if (!touchState.swipedContract &&
+                        Math.abs(dy) > SWIPE_NAV_THRESHOLD &&
+                        Math.abs(dx) < 60 &&
+                        Math.abs(dy) > Math.abs(dx) * 2.8) {
                         touchState.swipedContract = true;
                         if (dy < -SWIPE_NAV_THRESHOLD) {
                             navContract(1);
@@ -6062,7 +6032,8 @@
                 const yyyy = now.getFullYear();
                 const mm = String(now.getMonth() + 1).padStart(2, '0');
                 const dd = String(now.getDate()).padStart(2, '0');
-                let activeTradingDay = `${yyyy}-${mm}-${dd}`;
+                const todayStr = `${yyyy}-${mm}-${dd}`;
+                let activeTradingDay = todayStr;
 
                 if (marketType === 'US_STOCK') {
                     // 美股交易日换算为美东时间当地日期
@@ -6070,35 +6041,71 @@
                         const usDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(now);
                         if (usDateStr) activeTradingDay = usDateStr;
                     } catch(e) {}
+                } else if (marketType === 'CN_FUTURES' && activeModalQuote.quoteDate) {
+                    // 国内期货严格采用交易所官方返回的行情归属交易日，杜绝非夜盘品种用系统日期凭空伪造当天K线
+                    activeTradingDay = activeModalQuote.quoteDate;
                 }
 
-                const lastK = cachedFullKlines[cachedFullKlines.length - 1];
+                const normalizeDate = (d) => (d || '').replace(/\//g, '-').slice(0, 10);
+                const targetDate = normalizeDate(activeTradingDay);
+
                 const liveOpen = (activeModalQuote.open > 0) ? activeModalQuote.open : activeModalQuote.price;
                 const liveHigh = Math.max(activeModalQuote.high || 0, activeModalQuote.price, liveOpen);
                 const liveLow = (activeModalQuote.low > 0) ? Math.min(activeModalQuote.low, activeModalQuote.price, liveOpen) : Math.min(liveOpen, activeModalQuote.price);
                 const liveClose = activeModalQuote.price;
                 const liveVol = activeModalQuote.vol || 0;
 
-                if (lastK.date === activeTradingDay) {
-                    // 历史数据中已有当天记录：用盘中最新高开低收动态覆盖刷新
-                    lastK.open = liveOpen;
-                    lastK.high = Math.max(lastK.high, liveHigh);
-                    lastK.low = Math.min(lastK.low, liveLow);
-                    lastK.close = liveClose;
-                    lastK.vol = Math.max(lastK.vol, liveVol);
-                    lastK.isDynamic = true;
-                } else if (activeTradingDay > lastK.date) {
-                    // 历史日线库尚未盘后结账收盘入库：动态在末尾追加今日实时活跃日 K 柱！
-                    cachedFullKlines.push({
-                        date: activeTradingDay,
-                        open: liveOpen,
-                        high: liveHigh,
-                        low: liveLow,
-                        close: liveClose,
-                        vol: liveVol,
-                        isDynamic: true
-                    });
+                // 检查缓存中是否已有该交易日的 K 柱
+                const existingIdx = cachedFullKlines.findIndex(k => normalizeDate(k.date) === targetDate);
+                const lastK = cachedFullKlines[cachedFullKlines.length - 1];
+                const lastKDate = normalizeDate(lastK ? lastK.date : '');
+
+                if (existingIdx >= 0) {
+                    // 历史数据中已有当天记录：更新该柱最新盘中高开低收，绝不重复 push 新柱
+                    const targetK = cachedFullKlines[existingIdx];
+                    targetK.open = liveOpen;
+                    targetK.high = Math.max(targetK.high, liveHigh);
+                    targetK.low = Math.min(targetK.low, liveLow);
+                    targetK.close = liveClose;
+                    targetK.vol = Math.max(targetK.vol, liveVol);
+                    targetK.isDynamic = true;
+                } else if (targetDate > lastKDate) {
+                    // 确认该行情确实归属于更新的交易日 (且非周末或无盘期停滞旧数据)：动态追加
+                    const dayOfWeek = now.getDay();
+                    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+                    const minutes = now.getHours() * 60 + now.getMinutes();
+                    const isCnFuture = (marketType === 'CN_FUTURES');
+                    const code = activeModalQuote.code || activeModalSecId;
+                    
+                    // 无夜盘品种若在早盘 08:50 前，或行情官方日期落后于目标交易日，杜绝追加
+                    const isStaleQuote = activeModalQuote.quoteDate && normalizeDate(activeModalQuote.quoteDate) < targetDate;
+                    const allowAppend = !isWeekend && !isStaleQuote && (!isCnFuture || hasNightTrading(code) || minutes >= (8 * 60 + 50));
+
+                    if (allowAppend) {
+                        cachedFullKlines.push({
+                            date: targetDate,
+                            open: liveOpen,
+                            high: liveHigh,
+                            low: liveLow,
+                            close: liveClose,
+                            vol: liveVol,
+                            isDynamic: true
+                        });
+                    }
                 }
+
+                // 全局日期去重防御：确保同一自然日/交易日绝不出现两根柱
+                const dateSeen = new Set();
+                const uniqueKlines = [];
+                for (let i = cachedFullKlines.length - 1; i >= 0; i--) {
+                    const k = cachedFullKlines[i];
+                    const nd = normalizeDate(k.date);
+                    if (!dateSeen.has(nd)) {
+                        dateSeen.add(nd);
+                        uniqueKlines.unshift(k);
+                    }
+                }
+                cachedFullKlines = uniqueKlines;
             }
 
             if (!cachedFullKlines || cachedFullKlines.length === 0) {
