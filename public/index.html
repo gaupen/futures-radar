@@ -4099,6 +4099,7 @@
             mouseDragState = null;
             trendOverviewRect = null;
             klineOverviewRect = null;
+            crosshairState = { active: false, x: 0, y: 0 };
             chartViewStart = 0;
             startAllTimers();
         }
@@ -4237,6 +4238,7 @@
         let klineOverviewRect = null;      // K线 Overview 几何区域与视口像素位置
         let overviewDragState = null;      // Overview 拖拽手势状态 { target: 'trend'|'kline', mode: 'pan'|'left'|'right', ... }
         let mouseDragState = null;         // 桌面端鼠标主图拖拽状态 { type: 'kline-pan'|'trend-pan', ... }
+        let crosshairState = { active: false, x: 0, y: 0 }; // 十字准星与坐标轴标签状态
 
         function formatTrendBarHUD(closest, prePrice) {
             if (!closest) return '';
@@ -4247,8 +4249,8 @@
             return `
                 <span style="color:#8b9db7; font-weight:600;">${closest.dateStr || closest.time}</span> |
                 <span style="color:${color}; font-weight:bold;">现价: ${closest.price.toFixed(1)} (${diffP >= 0 ? '+' : ''}${diffP.toFixed(1)}, ${ratio}%)</span> |
-                <span style="color:#f1c40f;">均价: ${closest.vwap.toFixed(1)}</span> |
-                <span>量: ${closest.vol}手</span>
+                <span style="color:#f1c40f; font-weight:600;">均价: ${closest.vwap.toFixed(1)}</span> |
+                <span>量: <b style="color:#8b9db7;">${closest.vol}</b>手</span>
             `;
         }
 
@@ -4257,16 +4259,16 @@
             const isUp = k.close >= k.open;
             const color = isUp ? '#f85149' : '#2ea043';
             let maStr = '';
-            if (k.ma5) maStr += ` <span style="color:#f1c40f;">M5:${k.ma5.toFixed(1)}</span>`;
-            if (k.ma10) maStr += ` <span style="color:#9b59b6;">M10:${k.ma10.toFixed(1)}</span>`;
-            if (k.ma20) maStr += ` <span style="color:#3498db;">M20:${k.ma20.toFixed(1)}</span>`;
+            if (typeof k.ma5 === 'number') maStr += ` <span style="color:#f1c40f; font-weight:600; margin-left:6px;">MA5:${k.ma5.toFixed(1)}</span>`;
+            if (typeof k.ma10 === 'number') maStr += ` <span style="color:#9b59b6; font-weight:600; margin-left:6px;">MA10:${k.ma10.toFixed(1)}</span>`;
+            if (typeof k.ma20 === 'number') maStr += ` <span style="color:#3498db; font-weight:600; margin-left:6px;">MA20:${k.ma20.toFixed(1)}</span>`;
             return `
                 <span style="color:#8b9db7; font-weight:600;">${k.date}</span> |
-                <span>开: ${k.open}</span>
-                <span>高: ${k.high}</span>
-                <span>低: ${k.low}</span>
-                <span style="color:${color}; font-weight:bold;">收: ${k.close}</span> |
-                <span>量: ${k.vol}手</span>${maStr}
+                <span>开: <b style="color:#c9d1d9;">${k.open}</b></span>
+                <span>高: <b style="color:#f85149;">${k.high}</b></span>
+                <span>低: <b style="color:#2ea043;">${k.low}</b></span>
+                <span>收: <b style="color:${color};">${k.close}</b></span> |
+                <span>量: <b style="color:#8b9db7;">${k.vol}</b>手</span> |${maStr}
             `;
         }
 
@@ -4286,10 +4288,9 @@
             }
         }
 
-        // 触控 / 鼠标 共用：根据画布 X 坐标显示对应 K 柱 / 分时点详情
-        function showBarInfoAtX(x) {
+        // 触控 / 鼠标 共用：根据画布 (X, Y) 坐标显示对应 K 柱 / 分时点详情，并驱动全屏十字线及坐标轴浮动数值
+        function showBarInfoAtX(x, y) {
             const hudEl = document.getElementById('chart-hud-info');
-            if (!hudEl) return;
 
             if (currentChartType === 'trend') {
                 if (!activeTrendData || !activeTrendData.visibleBars || activeTrendData.visibleBars.length === 0) return;
@@ -4306,7 +4307,11 @@
                     }
                 }
                 if (closest && minDiff < 45) {
-                    hudEl.innerHTML = formatTrendBarHUD(closest, prePrice);
+                    if (hudEl) hudEl.innerHTML = formatTrendBarHUD(closest, prePrice);
+                }
+                if (typeof y === 'number') {
+                    crosshairState = { active: true, x, y };
+                    redrawTrendCanvasOnly();
                 }
                 return;
             }
@@ -4314,9 +4319,14 @@
             if (!activeRenderData) return;
             const { klines, step, padL = 0 } = activeRenderData;
             const idx = Math.floor((x - padL) / step);
-            if (idx < 0 || idx >= klines.length) return;
-            const k = klines[idx];
-            hudEl.innerHTML = formatKlineBarHUD(k);
+            if (idx >= 0 && idx < klines.length) {
+                const k = klines[idx];
+                if (hudEl) hudEl.innerHTML = formatKlineBarHUD(k);
+            }
+            if (typeof y === 'number') {
+                crosshairState = { active: true, x, y };
+                redrawKlineCanvasOnly();
+            }
         }
 
         // Overview 迷你小地图点击与拖拽命中检测 (分时图与 K 线图共用)
@@ -4508,7 +4518,7 @@
                         }
                     } else if (!touchState.swipedContract && currentChartType === 'trend') {
                         const rect = canvas.getBoundingClientRect();
-                        showBarInfoAtX(x - rect.left);
+                        showBarInfoAtX(x - rect.left, e.touches[0].clientY - rect.top);
                     }
                 }
             }, { passive: false });
@@ -4520,7 +4530,7 @@
                 }
                 if (touchState && touchState.mode === 'pan' && !touchState.moved && !touchState.swipedContract && e.changedTouches.length === 1) {
                     const rect = canvas.getBoundingClientRect();
-                    showBarInfoAtX(e.changedTouches[0].clientX - rect.left);
+                    showBarInfoAtX(e.changedTouches[0].clientX - rect.left, e.changedTouches[0].clientY - rect.top);
                 }
                 if (touchState && touchState.mode === 'pinch' && e.touches.length < 2) {
                     touchState = null;
@@ -4697,7 +4707,7 @@
                     }
                 }
 
-                // 正常悬浮移动：设置鼠标光标样式并显示十字线报价详情
+                // 正常悬浮移动：设置鼠标光标样式并显示十字线报价详情与坐标轴浮动标签
                 if (e.target === canvas) {
                     const hit = getOverviewHit(px, py);
                     if (hit === 'left' || hit === 'right') {
@@ -4706,7 +4716,7 @@
                         canvas.style.cursor = 'grab';
                     } else {
                         canvas.style.cursor = 'crosshair';
-                        showBarInfoAtX(px);
+                        showBarInfoAtX(px, py);
                     }
                 }
             });
@@ -4723,6 +4733,9 @@
 
             canvas.addEventListener('mouseleave', () => {
                 if (!overviewDragState && !mouseDragState) {
+                    crosshairState.active = false;
+                    if (currentChartType === 'trend') redrawTrendCanvasOnly();
+                    else redrawKlineCanvasOnly();
                     showLatestBarInfo();
                 }
             });
@@ -5616,12 +5629,15 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // 6. 交易日分界线与时间轴标签 (垂直虚线贯穿，时间轴清晰标注如 10/22 四)
-            visibleBars.forEach((b) => {
-                if (b.isDayStart && b.uIdx > 0 && b._x >= padL - 10 && b._x <= padL + availW + 10) {
-                    ctx.strokeStyle = '#2b3d54';
-                    ctx.lineWidth = 1.0;
-                    ctx.setLineDash([3, 3]);
+            // 6. 交易日分界线与时段分割线 (跨日粗分割线 + 日内休市/复盘细分割线)
+            visibleBars.forEach((b, idx) => {
+                if (b._x < padL - 10 || b._x > padL + availW + 10) return;
+
+                if (b.isDayStart && b.uIdx > 0) {
+                    // 交易日分界线 (主分割线)
+                    ctx.strokeStyle = '#385170';
+                    ctx.lineWidth = 1.2;
+                    ctx.setLineDash([4, 3]);
                     ctx.beginPath();
                     ctx.moveTo(b._x, 0);
                     ctx.lineTo(b._x, chartAvailableH);
@@ -5629,41 +5645,31 @@
                     ctx.setLineDash([]);
 
                     ctx.fillStyle = '#58a6ff';
-                    ctx.font = FONT;
+                    ctx.font = 'bold ' + FONT;
                     ctx.textAlign = 'center';
                     ctx.fillText(b.tradingDayLabel || b.date, b._x, chartAvailableH + 14);
+                } else if (idx > 0) {
+                    // 日内各关键时段分割 (如夜盘转日盘 09:00、午后复盘 13:30)
+                    const prevB = visibleBars[idx - 1];
+                    const isSessionJump = (b.time.startsWith('09:00') && !prevB.time.startsWith('09:00')) ||
+                                          (b.time.startsWith('13:30') && !prevB.time.startsWith('13:30')) ||
+                                          (b.time.startsWith('10:30') && !prevB.time.startsWith('10:30'));
+                    if (isSessionJump) {
+                        ctx.strokeStyle = '#182433';
+                        ctx.lineWidth = 0.8;
+                        ctx.setLineDash([2, 2]);
+                        ctx.beginPath();
+                        ctx.moveTo(b._x, 0);
+                        ctx.lineTo(b._x, chartAvailableH);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+
+                        ctx.fillStyle = '#6e839e';
+                        ctx.font = FONT;
+                        ctx.textAlign = 'center';
+                        ctx.fillText(b.time.substring(0, 5), b._x, chartAvailableH + 14);
+                    }
                 }
-            });
-
-            // 7. 价格走势半透明渐变底色 (按交易日独立成段，断开跨日空白)
-            const dayChunks = [];
-            let curChunk = [];
-            visibleBars.forEach(d => {
-                if (d.isDayStart && curChunk.length > 0) {
-                    dayChunks.push(curChunk);
-                    curChunk = [];
-                }
-                curChunk.push(d);
-            });
-            if (curChunk.length > 0) dayChunks.push(curChunk);
-
-            const grad = ctx.createLinearGradient(0, 0, 0, mainH);
-            grad.addColorStop(0, 'rgba(56, 139, 253, 0.18)');
-            grad.addColorStop(1, 'rgba(56, 139, 253, 0.01)');
-
-            dayChunks.forEach(chunk => {
-                if (chunk.length < 2) return;
-                const firstX = chunk[0]._x;
-                const lastX = chunk[chunk.length - 1]._x;
-                ctx.beginPath();
-                ctx.moveTo(firstX, zeroY);
-                chunk.forEach(d => {
-                    ctx.lineTo(d._x, getY(d.price));
-                });
-                ctx.lineTo(lastX, zeroY);
-                ctx.closePath();
-                ctx.fillStyle = grad;
-                ctx.fill();
             });
 
             // 8. VWAP 均价黄线 (交易所官方分时成交均价，跨日断开，绝不拉斜线连接)
@@ -5807,14 +5813,103 @@
                 };
             }
 
-            // 13. 缓存给鼠标与触控十字光标联动
+            // 13. 绘制全屏十字准星光标与双轴浮动刻度徽标 (Crosshair & Axis Badges)
+            if (crosshairState && crosshairState.active) {
+                drawTrendCrosshair(ctx, visibleBars, topP, botP, mainH, timeAxisTop, timeAxisH, padL, availW, w, FONT, prePrice);
+            }
+
+            // 14. 缓存给鼠标与触控十字光标联动
             activeTrendData = {
                 visibleBars,
                 getX: (b) => b._x,
                 prePrice,
                 padL,
-                availW
+                availW,
+                topP,
+                botP,
+                mainH,
+                timeAxisTop,
+                timeAxisH
             };
+        }
+
+        // 分时图全屏十字线与双轴浮动刻度标签
+        function drawTrendCrosshair(ctx, visibleBars, topP, botP, mainH, timeAxisTop, timeAxisH, padL, availW, w, FONT, prePrice) {
+            let closest = null;
+            let minDiff = Infinity;
+            for (let item of visibleBars) {
+                const diff = Math.abs(item._x - crosshairState.x);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = item;
+                }
+            }
+            if (!closest || minDiff > 80) return;
+            const barX = closest._x;
+            const cy = Math.max(0, Math.min(mainH, crosshairState.y));
+            const curPrice = topP - (cy / mainH) * (topP - botP);
+            const diffP = curPrice - prePrice;
+            const ratio = prePrice > 0 ? ((diffP / prePrice) * 100).toFixed(2) : '0.00';
+
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = '#8b949e';
+            ctx.lineWidth = 1;
+
+            // 1. 垂直准星线
+            ctx.beginPath();
+            ctx.moveTo(barX, 0);
+            ctx.lineTo(barX, timeAxisTop);
+            ctx.stroke();
+
+            // 2. 水平准星线
+            ctx.beginPath();
+            ctx.moveTo(padL, cy);
+            ctx.lineTo(padL + availW, cy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 3. Y 轴右侧价格与涨跌幅指示徽标
+            const priceStr = `${curPrice.toFixed(1)} (${diffP >= 0 ? '+' : ''}${ratio}%)`;
+            ctx.font = 'bold ' + FONT;
+            const pTextW = ctx.measureText(priceStr).width;
+            const badgeW = pTextW + 12;
+            const badgeH = 18;
+            const badgeX = padL + availW - badgeW;
+            const badgeY = Math.max(0, Math.min(mainH - badgeH, cy - badgeH / 2));
+
+            ctx.fillStyle = diffP >= 0 ? '#f85149' : '#2ea043';
+            ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(priceStr, badgeX + badgeW / 2, badgeY + badgeH / 2);
+
+            // 4. X 轴底部时间指示徽标
+            const timeStr = closest.dateStr || closest.time;
+            const tTextW = ctx.measureText(timeStr).width;
+            const tBadgeW = tTextW + 12;
+            const tBadgeH = Math.min(18, timeAxisH - 2);
+            let tBadgeX = barX - tBadgeW / 2;
+            tBadgeX = Math.max(padL, Math.min(padL + availW - tBadgeW, tBadgeX));
+            const tBadgeY = timeAxisTop + (timeAxisH - tBadgeH) / 2;
+
+            ctx.fillStyle = '#21262d';
+            ctx.fillRect(tBadgeX, tBadgeY, tBadgeW, tBadgeH);
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(tBadgeX, tBadgeY, tBadgeW, tBadgeH);
+
+            ctx.fillStyle = '#e6edf3';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(timeStr, tBadgeX + tBadgeW / 2, tBadgeY + tBadgeH / 2);
+
+            ctx.restore();
         }
 
         function aggregateMinLinesToKlines(rawList, freq) {
@@ -6042,6 +6137,13 @@
                 return 0;
             }
 
+            // 全局前置计算完整连续均线 MA5, MA10, MA20 (基于全量历史数据计算，绝不在视口左端截断留白)
+            for (let i = 0; i < cachedFullKlines.length; i++) {
+                cachedFullKlines[i].ma5 = calcMA(cachedFullKlines, i, 5);
+                cachedFullKlines[i].ma10 = calcMA(cachedFullKlines, i, 10);
+                cachedFullKlines[i].ma20 = calcMA(cachedFullKlines, i, 20);
+            }
+
             // 初始化当前视口展示根数
             currentVisibleCount = Math.min(reqLimit, cachedFullKlines.length);
             chartViewStart = 0;           // 新数据加载后重置平移位置
@@ -6083,13 +6185,6 @@
             // 移动端线宽 / 字体制表：手机上把线加粗、字放大，避免看不清
             const m = getChartMetrics(w);
             const FONT = (m.mobile ? '12px' : '10px') + ' monospace';
-
-            // 计算均线 MA5, MA10, MA20
-            for (let i = 0; i < count; i++) {
-                visibleBars[i].ma5 = calcMA(visibleBars, i, 5);
-                visibleBars[i].ma10 = calcMA(visibleBars, i, 10);
-                visibleBars[i].ma20 = calcMA(visibleBars, i, 20);
-            }
 
             const highs = visibleBars.map(k => k.high);
             const lows = visibleBars.map(k => k.low);
@@ -6423,6 +6518,11 @@
                 klineOverviewRect = null;
             }
 
+            // 绘制全屏十字准星光标与双轴浮动刻度徽标 (Crosshair & Axis Badges)
+            if (crosshairState && crosshairState.active) {
+                drawKlineCrosshair(ctx, visibleBars, step, topP, botP, mainH, timeAxisTop, timeAxisH, padL, availW, w, FONT);
+            }
+
             // 挂载鼠标与触控联动数据
             activeRenderData = { klines: visibleBars, step, topP, botP, mainH, h, w, padL };
             bindCanvasHover(canvas);
@@ -6431,32 +6531,79 @@
             return visibleBars.length;
         }
 
+        // K线图全屏十字线与双轴浮动刻度标签
+        function drawKlineCrosshair(ctx, visibleBars, step, topP, botP, mainH, timeAxisTop, timeAxisH, padL, availW, w, FONT) {
+            const idx = Math.floor((crosshairState.x - padL) / step);
+            if (idx < 0 || idx >= visibleBars.length) return;
+            const bar = visibleBars[idx];
+            const barCenterX = padL + idx * step + step / 2;
+            const cy = Math.max(0, Math.min(mainH, crosshairState.y));
+            const curPrice = topP - (cy / mainH) * (topP - botP);
+
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = '#8b949e';
+            ctx.lineWidth = 1;
+
+            // 1. 垂直准星线 (贯穿 K线主图与成交量图)
+            ctx.beginPath();
+            ctx.moveTo(barCenterX, 0);
+            ctx.lineTo(barCenterX, timeAxisTop);
+            ctx.stroke();
+
+            // 2. 水平准星线 (横贯主图)
+            ctx.beginPath();
+            ctx.moveTo(padL, cy);
+            ctx.lineTo(padL + availW, cy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 3. Y 轴右侧价格指示徽标
+            const priceStr = curPrice.toFixed(1);
+            ctx.font = 'bold ' + FONT;
+            const pTextW = ctx.measureText(priceStr).width;
+            const badgeW = pTextW + 12;
+            const badgeH = 18;
+            const badgeX = padL + availW - badgeW;
+            const badgeY = Math.max(0, Math.min(mainH - badgeH, cy - badgeH / 2));
+
+            ctx.fillStyle = '#1f6feb';
+            ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(priceStr, badgeX + badgeW / 2, badgeY + badgeH / 2);
+
+            // 4. X 轴底部时间指示徽标
+            const timeStr = bar.date;
+            const tTextW = ctx.measureText(timeStr).width;
+            const tBadgeW = tTextW + 12;
+            const tBadgeH = Math.min(18, timeAxisH - 2);
+            let tBadgeX = barCenterX - tBadgeW / 2;
+            tBadgeX = Math.max(padL, Math.min(padL + availW - tBadgeW, tBadgeX));
+            const tBadgeY = timeAxisTop + (timeAxisH - tBadgeH) / 2;
+
+            ctx.fillStyle = '#21262d';
+            ctx.fillRect(tBadgeX, tBadgeY, tBadgeW, tBadgeH);
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(tBadgeX, tBadgeY, tBadgeW, tBadgeH);
+
+            ctx.fillStyle = '#e6edf3';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(timeStr, tBadgeX + tBadgeW / 2, tBadgeY + tBadgeH / 2);
+
+            ctx.restore();
+        }
+
         function updateChartLegendText() {
             const legendEl = document.getElementById('chart-legend');
-            if (!legendEl || !activeModalSecId) return;
-
-            if (currentChartType === 'trend') {
-                const benchP = (activeModalQuote && activeModalQuote.price > 0 && typeof activeModalQuote.change === 'number')
-                    ? (activeModalQuote.price - activeModalQuote.change).toFixed(1)
-                    : (activeModalQuote && activeModalQuote.prevSettle > 0 ? activeModalQuote.prevSettle.toFixed(1) : '--');
-
-                legendEl.innerHTML = `
-                    <div class="legend-item"><span class="legend-dot" style="background:#f0f6fc;"></span><span>实时价格白线</span></div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#f1c40f;"></span><span>均价线 (VWAP)</span></div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#6e839e;"></span><span>昨结基准: ${benchP}</span></div>
-                `;
-            } else {
-                const kName = currentChartType === '5' ? '5分钟K' :
-                              currentChartType === '15' ? '15分钟K' :
-                              currentChartType === '60' ? '60分钟K' : '日K线';
-                const totalLoaded = cachedFullKlines ? cachedFullKlines.length : 0;
-                legendEl.innerHTML = `
-                    <div class="legend-item"><span style="color:#58a6ff; font-weight:bold;">${kName} (当前展示 ${currentVisibleCount} 根 / 共 ${totalLoaded} 根)</span></div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#f1c40f;"></span><span>MA5</span></div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#9b59b6;"></span><span>MA10</span></div>
-                    <div class="legend-item"><span class="legend-dot" style="background:#3498db;"></span><span>MA20</span></div>
-                `;
-            }
+            if (legendEl) legendEl.innerHTML = '';
         }
 
         // 鼠标悬停实时展示 K 柱详情 (已由 bindChartTouch 统一接管全局光标、拖拽与十字线联动)
