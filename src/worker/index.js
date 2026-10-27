@@ -174,6 +174,29 @@ async function fetchLatestMarketDiff() {
 }
 __name(fetchLatestMarketDiff, "fetchLatestMarketDiff");
 
+async function appendCronLog(env, eventType, message, details = null) {
+  try {
+    const bjNow = new Date(Date.now() + 8 * 3600 * 1000);
+    const timeStr = bjNow.toISOString().replace("T", " ").slice(0, 19);
+    const raw = await env.FUTURES_KV.get("cron:logs");
+    let logs = [];
+    if (raw) {
+      try { logs = JSON.parse(raw); } catch (e) { logs = []; }
+    }
+    logs.unshift({
+      time: timeStr,
+      type: eventType,
+      msg: message,
+      details: details || {}
+    });
+    if (logs.length > 50) logs = logs.slice(0, 50);
+    await env.FUTURES_KV.put("cron:logs", JSON.stringify(logs), { expirationTtl: 86400 * 14 });
+  } catch (e) {
+    console.warn("[cron-log] Failed to write log:", e);
+  }
+}
+__name(appendCronLog, "appendCronLog");
+
 async function archiveForeignFuturesDay(env, targetDateStr) {
   const results = await Promise.all(FOREIGN_ARCHIVE_SYMBOLS.map(async sym => {
     try {
@@ -239,6 +262,13 @@ async function archiveForeignFuturesDay(env, targetDateStr) {
   const key = `foreign:1min:${targetDateStr}`;
   await env.FUTURES_KV.put(key, JSON.stringify(payload), { expirationTtl: 86400 * 8 });
   await env.FUTURES_KV.put(`cron:done:foreign:${targetDateStr}`, "1", { expirationTtl: 86400 * 2 });
+  const totalBars = Object.values(contracts).reduce((acc, b) => acc + b.length, 0);
+  await appendCronLog(env, "FOREIGN_SUCCESS", `外盘 1 分钟全量归档成功 @ ${targetDateStr}`, {
+    date: targetDateStr,
+    symbols: Object.keys(contracts).length,
+    totalBars: totalBars,
+    sizeKb: ((JSON.stringify(payload).length) / 1024).toFixed(1) + " KB"
+  });
   return payload;
 }
 __name(archiveForeignFuturesDay, "archiveForeignFuturesDay");
@@ -393,6 +423,131 @@ var index_default = {
       } catch (e) {
         return jsonResp({ ok: false, error: e && e.message || String(e) }, 500);
       }
+    }
+    if (url.pathname === "/api/cron/status") {
+      if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
+      const bjNow = new Date(Date.now() + 8 * 3600 * 1000);
+      const hours = bjNow.getUTCHours();
+      const minutes = bjNow.getUTCMinutes();
+      const hm = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+      const dayOfWeek = bjNow.getUTCDay();
+      const dateStr = bjNow.toISOString().slice(0, 10);
+      const prevTradingDay = new Date(Date.now() + 8 * 3600 * 1000 - 86400 * 1000).toISOString().slice(0, 10);
+
+      const [foreignDone, cnDayDone, cnNight1Done, cnNight2Done, cnNight3Done, rawLogs] = await Promise.all([
+        env.FUTURES_KV.get(`cron:done:foreign:${prevTradingDay}`),
+        env.FUTURES_KV.get(`cron:done:${dateStr}:cn_day`),
+        env.FUTURES_KV.get(`cron:done:${dateStr}:cn_night1`),
+        env.FUTURES_KV.get(`cron:done:${dateStr}:cn_night2`),
+        env.FUTURES_KV.get(`cron:done:${dateStr}:cn_night3`),
+        env.FUTURES_KV.get("cron:logs")
+      ]);
+
+      let logs = [];
+      if (rawLogs) {
+        try { logs = JSON.parse(rawLogs); } catch (e) { logs = []; }
+      }
+
+      // 检查最近 7 天存在的外盘归档
+      const targetDates = [];
+      for (let i = 1; i <= 7; i++) {
+        targetDates.push(new Date(Date.now() + 8 * 3600 * 1000 - i * 86400 * 1000).toISOString().slice(0, 10));
+      }
+      const archivesCheck = await Promise.all(targetDates.map(async d => {
+        const raw = await env.FUTURES_KV.get(`foreign:1min:${d}`);
+        return { date: d, exists: !!raw, sizeKb: raw ? (raw.length / 1024).toFixed(1) + " KB" : null };
+      }));
+
+      const statusData = {
+        ok: true,
+        serverTime: {
+          utc: new Date().toISOString(),
+          beijing: bjNow.toISOString().replace("T", " ").slice(0, 19),
+          hm: hm,
+          dayOfWeek: dayOfWeek
+        },
+        taskCheckpoints: {
+          foreignArchivePrevTradingDay: { date: prevTradingDay, completed: !!foreignDone },
+          domesticDaySessionClose: { date: dateStr, completed: !!cnDayDone },
+          domesticNightSession1: { date: dateStr, completed: !!cnNight1Done },
+          domesticNightSession2: { date: dateStr, completed: !!cnNight2Done },
+          domesticNightSession3: { date: dateStr, completed: !!cnNight3Done }
+        },
+        availableForeignArchives: archivesCheck,
+        recentLogsCount: logs.length,
+        recentLogs: logs
+      };
+
+      const wantsHtml = url.searchParams.get("format") === "html" || (request.headers.get("accept") || "").includes("text/html");
+      if (wantsHtml) {
+        const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cloudflare Cron & 归档监控仪表盘</title>
+<style>
+  body { background:#0d1117; color:#c9d1d9; font-family:-apple-system,BlinkMacSystemFont,monospace; padding:20px; margin:0; line-height:1.5; }
+  h1 { color:#58a6ff; font-size:20px; border-bottom:1px solid #30363d; padding-bottom:10px; margin-top:0; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:16px; margin-bottom:16px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:bold; }
+  .badge-done { background:#238636; color:#fff; }
+  .badge-pending { background:#484f58; color:#c9d1d9; }
+  .badge-log { background:#1f6feb; color:#fff; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
+  th, td { border:1px solid #30363d; padding:8px 12px; text-align:left; }
+  th { background:#21262d; color:#8b949e; }
+  tr:nth-child(even) { background:#0d1117; }
+  .btn { display:inline-block; padding:6px 12px; background:#238636; color:#fff; text-decoration:none; border-radius:6px; font-weight:bold; font-size:13px; margin-right:8px; margin-top:6px; }
+</style>
+</head>
+<body>
+<h1>⏱️ Cloudflare Worker Cron 定时器 & 归档诊断仪表盘</h1>
+<div class="card">
+  <strong>北京时间：</strong> ${statusData.serverTime.beijing} (UTC: ${statusData.serverTime.utc})<br>
+  <strong>快捷操作：</strong><br>
+  <a class="btn" href="/api/cron/trigger-sync?type=foreign" target="_blank">⚡ 手动补录外盘归档</a>
+  <a class="btn" href="/api/cron/trigger-sync?type=domestic" target="_blank" style="background:#1f6feb;">⚡ 手动补录国内快照</a>
+  <a class="btn" href="/api/cron/status?format=html" style="background:#30363d;">🔄 刷新本页面</a>
+</div>
+
+<div class="card">
+  <h3>📋 今日收盘任务完成状态检查</h3>
+  <table>
+    <tr><th>任务名称</th><th>对应日期/交易日</th><th>当前状态</th></tr>
+    <tr><td>外盘 CME 1分钟全量归档</td><td>${prevTradingDay}</td><td><span class="badge ${foreignDone ? 'badge-done' : 'badge-pending'}">${foreignDone ? '🟢 已完成' : '⚪ 未就绪/待触发'}</span></td></tr>
+    <tr><td>国内日盘收盘快照 (15:02)</td><td>${dateStr}</td><td><span class="badge ${cnDayDone ? 'badge-done' : 'badge-pending'}">${cnDayDone ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
+    <tr><td>国内夜盘收盘1 (23:02)</td><td>${dateStr}</td><td><span class="badge ${cnNight1Done ? 'badge-done' : 'badge-pending'}">${cnNight1Done ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
+    <tr><td>国内夜盘收盘2 (01:02)</td><td>${dateStr}</td><td><span class="badge ${cnNight2Done ? 'badge-done' : 'badge-pending'}">${cnNight2Done ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
+    <tr><td>国内夜盘收盘3 (02:32)</td><td>${dateStr}</td><td><span class="badge ${cnNight3Done ? 'badge-done' : 'badge-pending'}">${cnNight3Done ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>📦 最近 7 天外盘 KV 归档文件检测</h3>
+  <table>
+    <tr><th>日期</th><th>KV Key</th><th>文件状态</th><th>体积</th></tr>
+    ${archivesCheck.map(a => `<tr><td>${a.date}</td><td>foreign:1min:${a.date}</td><td><span class="badge ${a.exists ? 'badge-done' : 'badge-pending'}">${a.exists ? '✅ 存在' : '❌ 缺失'}</span></td><td>${a.sizeKb || '--'}</td></tr>`).join('')}
+  </table>
+</div>
+
+<div class="card">
+  <h3>📝 最近 50 条 Cron 调度与执行历史日志 (最新在前)</h3>
+  ${logs.length === 0 ? '<p style="color:#8b949e;">暂无日志记录（Cron 触发后会自动写入）</p>' : `
+  <table>
+    <tr><th>北京时间</th><th>事件类型</th><th>日志信息</th><th>详情</th></tr>
+    ${logs.map(l => `<tr><td>${l.time}</td><td><span class="badge badge-log">${l.type}</span></td><td>${l.msg}</td><td style="color:#8b949e;">${JSON.stringify(l.details)}</td></tr>`).join('')}
+  </table>`}
+</div>
+</body>
+</html>`;
+        return new Response(html, {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }
+        });
+      }
+
+      return jsonResp(statusData);
     }
     if (url.pathname === "/api/watchlist") {
       if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);

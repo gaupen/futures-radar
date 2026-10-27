@@ -772,14 +772,18 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 18px;
+            padding: 6px 16px;
             background: #090e15;
             border-bottom: 1px solid var(--border-color);
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            min-height: 40px;
+            height: 40px;
             gap: 8px;
         }
 
-        .modal-nav-left { display: flex; gap: 6px; }
+        .modal-nav-left { display: flex; gap: 6px; flex-shrink: 0; }
 
         .chart-tab-btn {
             padding: 5px 12px;
@@ -790,6 +794,7 @@
             color: var(--text-secondary);
             border: 1px solid var(--border-color);
             cursor: pointer;
+            white-space: nowrap;
         }
 
         .chart-tab-btn.active {
@@ -805,6 +810,8 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .modal-body {
@@ -834,14 +841,39 @@
             overscroll-behavior: contain;
         }
 
-        .chart-legend {
+        .chart-hud-bar {
             display: flex;
-            gap: 14px;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 22px;
+            height: 22px;
+            line-height: 22px;
+            padding: 0 4px;
             font-family: var(--font-mono);
             font-size: 11px;
             color: var(--text-secondary);
-            min-height: 18px;
-            flex-wrap: wrap;
+            overflow: hidden;
+            white-space: nowrap;
+            gap: 12px;
+        }
+
+        .chart-hud-info {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 12px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            white-space: nowrap;
+            align-items: center;
         }
 
         .legend-item { display: flex; align-items: center; gap: 4px; }
@@ -1279,8 +1311,12 @@
         </div>
     </div>
 
-    <footer style="text-align: center; color: var(--text-muted); font-size: 11px; margin-top: auto; padding: 16px 10px; opacity: 0.65;">
+    <footer style="text-align: center; color: var(--text-muted); font-size: 11px; margin-top: auto; padding: 16px 10px; opacity: 0.75;">
         上次刷新: <span id="last-update-time" style="font-family:var(--font-mono); color:var(--text-secondary);">--:--:--</span>
+        <span style="margin: 0 8px; opacity: 0.4;">|</span>
+        <a href="/api/cron/status?format=html" target="_blank" style="color:var(--accent-color); text-decoration:none; display:inline-flex; align-items:center; gap:3px;" title="查看 Cloudflare Worker 定时器执行与历史日志">
+            <span>⏱️ 定时器监控</span>
+        </a>
     </footer>
 
     <!-- 专业图表弹出层 Modal -->
@@ -1323,7 +1359,10 @@
             </div>
 
             <div class="modal-body">
-                <div class="chart-legend" id="chart-legend"></div>
+                <div class="chart-hud-bar" id="chart-hud-bar">
+                    <div class="chart-hud-info" id="chart-hud-info"></div>
+                    <div class="chart-legend" id="chart-legend"></div>
+                </div>
                 <div class="chart-container" id="chart-wrapper">
                     <canvas id="pro-chart-canvas"></canvas>
                 </div>
@@ -2857,7 +2896,7 @@
         // ==================== 第一步：新浪财经批量行情主通道 (极速无跨域并发) ====================
         // 解析品种在大商所/上期所/郑商所/广期所对应的新浪行情代码（格式 nf_SYMBOL + 4位YYMM）
         function getSinaFuturesSymbolForPool(item) {
-            const sym = (item.symbol || '').toUpperCase();
+            const sym = (item.symbol || parseVarietySymbol(item.code) || '').toUpperCase();
             const ym = parseContractYearMonth(item.name || '', item.code);
             if (ym && ym.year && ym.month) {
                 const y2 = String(ym.year % 100).padStart(2, '0');
@@ -2975,6 +3014,7 @@
                     batchQuotes.push({
                         secid: secid,
                         code: code,
+                        symbol: item.symbol || varietySym || '',
                         market: item.market,
                         marketType: 'CN_FUTURES',
                         name: name,
@@ -3171,6 +3211,8 @@
                 } else {
                     const sym = getSinaFuturesSymbolForPool(q);
                     symMap.set(sym, q);
+                    symMap.set(sym.toLowerCase(), q);
+                    symMap.set(sym.toUpperCase(), q);
                 }
             });
             const symbols = Array.from(symMap.keys());
@@ -4196,10 +4238,58 @@
         let overviewDragState = null;      // Overview 拖拽手势状态 { target: 'trend'|'kline', mode: 'pan'|'left'|'right', ... }
         let mouseDragState = null;         // 桌面端鼠标主图拖拽状态 { type: 'kline-pan'|'trend-pan', ... }
 
+        function formatTrendBarHUD(closest, prePrice) {
+            if (!closest) return '';
+            const isUp = closest.price >= prePrice;
+            const diffP = closest.price - prePrice;
+            const ratio = prePrice > 0 ? ((diffP / prePrice) * 100).toFixed(2) : '0.00';
+            const color = isUp ? '#f85149' : '#2ea043';
+            return `
+                <span style="color:#8b9db7; font-weight:600;">${closest.dateStr || closest.time}</span> |
+                <span style="color:${color}; font-weight:bold;">现价: ${closest.price.toFixed(1)} (${diffP >= 0 ? '+' : ''}${diffP.toFixed(1)}, ${ratio}%)</span> |
+                <span style="color:#f1c40f;">均价: ${closest.vwap.toFixed(1)}</span> |
+                <span>量: ${closest.vol}手</span>
+            `;
+        }
+
+        function formatKlineBarHUD(k) {
+            if (!k) return '';
+            const isUp = k.close >= k.open;
+            const color = isUp ? '#f85149' : '#2ea043';
+            let maStr = '';
+            if (k.ma5) maStr += ` <span style="color:#f1c40f;">M5:${k.ma5.toFixed(1)}</span>`;
+            if (k.ma10) maStr += ` <span style="color:#9b59b6;">M10:${k.ma10.toFixed(1)}</span>`;
+            if (k.ma20) maStr += ` <span style="color:#3498db;">M20:${k.ma20.toFixed(1)}</span>`;
+            return `
+                <span style="color:#8b9db7; font-weight:600;">${k.date}</span> |
+                <span>开: ${k.open}</span>
+                <span>高: ${k.high}</span>
+                <span>低: ${k.low}</span>
+                <span style="color:${color}; font-weight:bold;">收: ${k.close}</span> |
+                <span>量: ${k.vol}手</span>${maStr}
+            `;
+        }
+
+        function showLatestBarInfo() {
+            const hudEl = document.getElementById('chart-hud-info');
+            if (!hudEl) return;
+            if (currentChartType === 'trend') {
+                if (activeTrendData && activeTrendData.visibleBars && activeTrendData.visibleBars.length > 0) {
+                    const lastBar = activeTrendData.visibleBars[activeTrendData.visibleBars.length - 1];
+                    hudEl.innerHTML = formatTrendBarHUD(lastBar, activeTrendData.prePrice);
+                }
+            } else {
+                if (cachedFullKlines && cachedFullKlines.length > 0) {
+                    const lastK = cachedFullKlines[cachedFullKlines.length - 1];
+                    hudEl.innerHTML = formatKlineBarHUD(lastK);
+                }
+            }
+        }
+
         // 触控 / 鼠标 共用：根据画布 X 坐标显示对应 K 柱 / 分时点详情
         function showBarInfoAtX(x) {
-            const infoEl = document.getElementById('chart-status-text');
-            if (!infoEl) return;
+            const hudEl = document.getElementById('chart-hud-info');
+            if (!hudEl) return;
 
             if (currentChartType === 'trend') {
                 if (!activeTrendData || !activeTrendData.visibleBars || activeTrendData.visibleBars.length === 0) return;
@@ -4216,15 +4306,7 @@
                     }
                 }
                 if (closest && minDiff < 45) {
-                    const isUp = closest.price >= prePrice;
-                    const diffP = closest.price - prePrice;
-                    const ratio = prePrice > 0 ? ((diffP / prePrice) * 100).toFixed(2) : '0.00';
-                    infoEl.innerHTML = `
-                        <span style="color:#8b9db7;">${closest.dateStr || closest.time}</span> |
-                        <span style="color:${isUp ? '#f85149' : '#2ea043'}; font-weight:bold;">现价: ${closest.price.toFixed(1)} (${diffP >= 0 ? '+' : ''}${diffP.toFixed(1)}, ${ratio}%)</span> |
-                        <span style="color:#f1c40f;">均价: ${closest.vwap.toFixed(1)}</span> |
-                        <span>量: ${closest.vol}手</span>
-                    `;
+                    hudEl.innerHTML = formatTrendBarHUD(closest, prePrice);
                 }
                 return;
             }
@@ -4234,19 +4316,7 @@
             const idx = Math.floor((x - padL) / step);
             if (idx < 0 || idx >= klines.length) return;
             const k = klines[idx];
-            const isUp = k.close >= k.open;
-            let maStr = '';
-            if (k.ma5) maStr += ` <span style="color:#f1c40f;">M5:${k.ma5.toFixed(1)}</span>`;
-            if (k.ma10) maStr += ` <span style="color:#9b59b6;">M10:${k.ma10.toFixed(1)}</span>`;
-            if (k.ma20) maStr += ` <span style="color:#3498db;">M20:${k.ma20.toFixed(1)}</span>`;
-            infoEl.innerHTML = `
-                <span>${k.date}</span> |
-                <span>开: ${k.open}</span>
-                <span>高: ${k.high}</span>
-                <span>低: ${k.low}</span>
-                <span style="color:${isUp ? '#f85149' : '#2ea043'}; font-weight:bold;">收: ${k.close}</span> |
-                <span>量: ${k.vol}手</span>${maStr}
-            `;
+            hudEl.innerHTML = formatKlineBarHUD(k);
         }
 
         // Overview 迷你小地图点击与拖拽命中检测 (分时图与 K 线图共用)
@@ -4653,12 +4723,7 @@
 
             canvas.addEventListener('mouseleave', () => {
                 if (!overviewDragState && !mouseDragState) {
-                    const infoEl = document.getElementById('chart-status-text');
-                    if (currentChartType !== 'trend' && infoEl && cachedFullKlines && cachedFullKlines.length > 0) {
-                        infoEl.innerHTML = `✅ 已加载 ${cachedFullKlines.length} 根 K 线 (按住鼠标可左右拖动全景)`;
-                    } else {
-                        updateChartLegendText();
-                    }
+                    showLatestBarInfo();
                 }
             });
         }
@@ -4693,6 +4758,7 @@
                     if (statusEl) statusEl.innerHTML = `⏳ 正在拉取 ${activeModalQuote.name} 当日分时数据...`;
                     updateChartLegendText();
                     const count = await drawTrendChart(ctx, w, h);
+                    showLatestBarInfo();
                     const elapsed = Math.round(performance.now() - startTime);
                     if (statusEl) {
                         statusEl.innerHTML = count > 0 ? 
@@ -4711,6 +4777,7 @@
                     updateChartLegendText();
 
                     const count = await drawKlineChart(ctx, w, h, currentChartType, reqBars);
+                    showLatestBarInfo();
                     const elapsed = Math.round(performance.now() - startTime);
                     if (statusEl) {
                         const isGlobalIntra = (activeModalQuote && activeModalQuote.marketType === 'GLOBAL_FUTURES' && currentChartType !== '101' && cachedFullKlines.length < 50);
@@ -5440,8 +5507,16 @@
             const lastBar = cachedTrendFullBars[N_data - 1];
             const curSlot = convertTimeToSlotIndex(lastBar.time, sessionConfig);
             const remainingSlots = Math.max(0, sessionConfig.totalMinutes - curSlot);
-            const minBreathingSlots = Math.round(sessionConfig.totalMinutes * 0.12);
-            const futurePaddingUnits = Math.max(minBreathingSlots, Math.round(remainingSlots * 0.85));
+
+            let futurePaddingUnits;
+            if (activeModalQuote && activeModalQuote.marketType === 'GLOBAL_FUTURES') {
+                // 外盘期货 23 小时跨度极长，避免预留十几小时空白，自适应预留 8% 呼吸留白区 (~20-30根)
+                const dynamicPad = Math.max(20, Math.round(N_data * 0.08));
+                futurePaddingUnits = Math.min(Math.round(remainingSlots * 0.5), dynamicPad);
+            } else {
+                const minBreathingSlots = Math.round(sessionConfig.totalMinutes * 0.08);
+                futurePaddingUnits = Math.min(Math.round(remainingSlots * 0.85), Math.max(minBreathingSlots, Math.round(N_data * 0.1)));
+            }
 
             // 全宇宙时间轴总单元数
             const N_universe = N_data + futurePaddingUnits;
