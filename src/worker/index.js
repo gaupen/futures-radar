@@ -480,6 +480,8 @@ var index_default = {
           if (cachedResp) {
             const hitHeaders = new Headers(cachedResp.headers);
             hitHeaders.set("x-cf-cache", "HIT");
+            hitHeaders.set("access-control-allow-origin", "*");
+            hitHeaders.set("access-control-expose-headers", "x-cf-cache");
             return new Response(cachedResp.body, {
               status: cachedResp.status,
               headers: hitHeaders
@@ -498,7 +500,9 @@ var index_default = {
         }
 
         const buf = await resp.arrayBuffer();
-        const text = new TextDecoder("gb18030").decode(buf);
+        let text = new TextDecoder("gb18030").decode(buf);
+        // 彻底剔除新浪特征防盗链注释 /*<script>location.href='//sina.com';</script>*/，确保下游 JSONP 极速准确解析
+        text = text.replace(/\/\*[\s\S]*?\*\//g, "").trim();
 
         const tradingStatus = getMarketTradingStatus();
         const edgeTtl = getStockCacheTtl(targetUrl, tradingStatus);
@@ -510,6 +514,7 @@ var index_default = {
             "content-type": "application/javascript; charset=utf-8",
             "cache-control": `public, max-age=${clientTtl}, s-maxage=${edgeTtl}`,
             "access-control-allow-origin": "*",
+            "access-control-expose-headers": "x-cf-cache",
             "x-cf-cache": "MISS"
           }
         });

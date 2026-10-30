@@ -814,6 +814,53 @@
             white-space: nowrap;
         }
 
+        /* 3级缓存状态提示栏 (实时拉取 / 服务端缓存 / 本地缓存) */
+        .chart-source-bar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 4px 18px 2px 18px;
+            flex-shrink: 0;
+        }
+
+        .chart-source-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-weight: 500;
+            line-height: 1;
+        }
+
+        .source-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .dot-local {
+            background: #8b949e;
+            box-shadow: 0 0 6px rgba(139, 148, 158, 0.6);
+        }
+
+        .dot-server {
+            background: #58a6ff;
+            box-shadow: 0 0 6px rgba(88, 166, 255, 0.7);
+        }
+
+        .dot-live {
+            background: #f0883e;
+            box-shadow: 0 0 6px rgba(240, 136, 62, 0.7);
+        }
+
+        .dot-error {
+            background: #f85149;
+            box-shadow: 0 0 6px rgba(248, 81, 73, 0.7);
+        }
+
         .modal-body {
             flex: 1;
             position: relative;
@@ -1375,6 +1422,14 @@
                 </div>
                 <div id="modal-status-feedback" class="modal-nav-status">
                     <span id="chart-status-text">⚡ 准备就绪</span>
+                </div>
+            </div>
+
+            <!-- 数据源状态指示栏 (实时拉取 / 服务端缓存 / 本地缓存) -->
+            <div class="chart-source-bar">
+                <div id="chart-source-indicator" class="chart-source-indicator">
+                    <span class="source-dot dot-live"></span>
+                    <span style="color: #f0883e;">实时拉取 (sina)</span>
                 </div>
             </div>
 
@@ -3878,12 +3933,14 @@
             return raw;
         }
 
-        // 解析新浪 JSONP 文本载荷为原生 JS 对象/数组/字符串
+        // 解析新浪 JSONP 文本载荷为原生 JS 对象/数组/字符串 (精准清洗防盗链注释与回调头)
         function parseSinaJsonpResponse(text) {
             if (!text || typeof text !== 'string') return null;
-            const eqIdx = text.indexOf('=');
+            // 彻底剔除新浪特征防盗链注释 /*<script>location.href='//sina.com';</script>*/
+            const cleanText = text.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+            const eqIdx = cleanText.indexOf('=');
             if (eqIdx === -1) return null;
-            let payload = text.slice(eqIdx + 1).trim();
+            let payload = cleanText.slice(eqIdx + 1).trim();
             if (payload.endsWith(';')) payload = payload.slice(0, -1).trim();
             if (payload.startsWith('(') && payload.endsWith(')')) {
                 payload = payload.slice(1, -1).trim();
@@ -3900,6 +3957,24 @@
                     }
                 }
                 return null;
+            }
+        }
+
+        // ==================== 图表 3 级缓存数据源指示器 ====================
+        let currentChartDataSource = 'local'; // 'local' | 'server' | 'live' | 'error'
+
+        function updateChartDataSourceTag(type, detail = 'sina') {
+            currentChartDataSource = type;
+            const el = document.getElementById('chart-source-indicator');
+            if (!el) return;
+            if (type === 'local') {
+                el.innerHTML = `<span class="source-dot dot-local"></span><span style="color: #8b949e;">本地缓存</span>`;
+            } else if (type === 'server') {
+                el.innerHTML = `<span class="source-dot dot-server"></span><span style="color: #58a6ff;">服务端缓存 (${detail})</span>`;
+            } else if (type === 'live') {
+                el.innerHTML = `<span class="source-dot dot-live"></span><span style="color: #f0883e;">实时拉取 (${detail})</span>`;
+            } else if (type === 'error') {
+                el.innerHTML = `<span class="source-dot dot-error"></span><span style="color: #f85149;">暂无数据 (${detail})</span>`;
             }
         }
 
@@ -3939,7 +4014,7 @@
         // 1. 客户端纯内存快速命中 (0ms 瞬开，零磁盘写开销)
         // 2. 经由 Cloudflare Worker 代理 (/api/sina-stock?url=...) 异步 fetch，配合 Worker 边缘 Cache API
         // 3. 备用兜底：若非 worker 部署环境或离线本地，自动平滑降级为原生 JSONP 脚本加载
-        async function loadSinaFuturesJsonp(url) {
+        async function loadSinaFuturesJsonp(url, isPrefetch = false) {
             const prefix = '';
             // 规范化 URL：将 CALLBACK_VAR 替换为统一变量 _f，以最大化命中纯内存及 Worker Edge Cache
             const normUrl = url.replace('CALLBACK_VAR', '_f');
@@ -3947,6 +4022,7 @@
             // 1. 优先检查客户端纯内存缓存 (0ms 瞬开)
             const memHit = getKlineFromMemoryCache(normUrl);
             if (memHit) {
+                if (!isPrefetch) updateChartDataSourceTag('local');
                 return memHit;
             }
 
@@ -3955,10 +4031,15 @@
                 const proxyUrl = prefix + '/api/sina-stock?url=' + encodeURIComponent(normUrl);
                 const resp = await fetch(proxyUrl);
                 if (resp.ok) {
+                    const cfCache = resp.headers.get('x-cf-cache');
                     const text = await resp.text();
                     const data = parseSinaJsonpResponse(text);
                     if (data) {
                         setKlineMemoryCache(normUrl, data);
+                        if (!isPrefetch) {
+                            const srcType = (cfCache === 'HIT' ? 'server' : 'live');
+                            updateChartDataSourceTag(srcType, 'sina');
+                        }
                         return data;
                     }
                 }
@@ -3994,7 +4075,12 @@
                     try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
                     if (script.parentNode) script.parentNode.removeChild(script);
                     const finalData = res || null;
-                    if (finalData) setKlineMemoryCache(normUrl, finalData);
+                    if (finalData) {
+                        setKlineMemoryCache(normUrl, finalData);
+                        if (!isPrefetch) updateChartDataSourceTag('live', 'sina');
+                    } else {
+                        if (!isPrefetch) updateChartDataSourceTag('error', '无数据');
+                    }
                     resolve(finalData);
                 }
 
@@ -4063,7 +4149,7 @@
                         const normUrl = u.replace('CALLBACK_VAR', '_f');
                         if (!getKlineFromMemoryCache(normUrl)) {
                             try {
-                                await loadSinaFuturesJsonp(u);
+                                await loadSinaFuturesJsonp(u, true);
                             } catch (e) {}
                             // 每条预热请求间隔 120ms，温和且平稳，避免瞬时并发
                             await new Promise(r => setTimeout(r, 120));
@@ -4167,6 +4253,7 @@
 
             activeModalSecId = secid;
             activeModalQuote = quote;
+            updateChartDataSourceTag('live', '正在请求...');
 
             // 弹窗打开期间：锁定底层主页面滚动，暂停后台轮询，独享极致流畅
             document.body.style.overflow = 'hidden';
