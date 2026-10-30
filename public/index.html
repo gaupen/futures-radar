@@ -3936,7 +3936,7 @@
         // 解析新浪 JSONP 文本载荷为原生 JS 对象/数组/字符串 (精准清洗防盗链注释与回调头)
         function parseSinaJsonpResponse(text) {
             if (!text || typeof text !== 'string') return null;
-            // 彻底剔除新浪特征防盗链注释 /*<script>location.href='//sina.com';</script>*/
+            // 彻底剔除新浪特征防盗链块级注释
             const cleanText = text.replace(/\/\*[\s\S]*?\*\//g, '').trim();
             const eqIdx = cleanText.indexOf('=');
             if (eqIdx === -1) return null;
