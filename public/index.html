@@ -2968,7 +2968,7 @@
                     resolve({});
                 };
 
-                const prefix = (window.location.protocol === 'file:' ? 'https://futures-radar.gaupen.workers.dev' : '');
+                const prefix = '';
                 script.src = prefix + '/api/sina?list=' + symbols.join(',') + '&_t=' + Date.now();
                 document.head.appendChild(script);
             });
@@ -3165,13 +3165,14 @@
             }
         }
 
-        // 一次扫描结束后统一收尾：渲染 + 横幅 + 重新决定刷新节奏
+        // 一次扫描结束后统一收尾：渲染 + 横幅 + 重新决定刷新节奏 + 核心标的后台预热
         function finishScanPass() {
             filterAndRenderFocusPool();
             const el = document.getElementById('last-update-time');
             if (el) el.textContent = new Date().toTimeString().split(' ')[0];
             updateDataSourceBanner();
             applyRefreshSchedule();
+            schedulePrefetchVisibleContracts();
         }
 
         // 手动刷新：休市时也可以主动拉一次（这条不违反"休市不自动刷"的约定）
@@ -3502,6 +3503,7 @@
                 </div>
                 `;
             }).join('');
+            schedulePrefetchVisibleContracts();
         }
 
         // 原地切换品种卡片内的显示月份 (0% 页面抖动，0ms 重新布局)
@@ -3713,6 +3715,7 @@
                 </div>
                 `;
             }).join('');
+            schedulePrefetchVisibleContracts();
         }
 
         // 原地轻量数值刷新 (0% 页面抖动)
@@ -3875,12 +3878,100 @@
             return raw;
         }
 
-        // 统一超稳定 JSONP 加载器 (带 Object.defineProperty 零延迟拦截)
-        function loadSinaFuturesJsonp(url) {
+        // 解析新浪 JSONP 文本载荷为原生 JS 对象/数组/字符串
+        function parseSinaJsonpResponse(text) {
+            if (!text || typeof text !== 'string') return null;
+            const eqIdx = text.indexOf('=');
+            if (eqIdx === -1) return null;
+            let payload = text.slice(eqIdx + 1).trim();
+            if (payload.endsWith(';')) payload = payload.slice(0, -1).trim();
+            if (payload.startsWith('(') && payload.endsWith(')')) {
+                payload = payload.slice(1, -1).trim();
+            }
+            try {
+                return JSON.parse(payload);
+            } catch(e) {
+                // 如果是美股 5 日分时的纯双引号包裹字符串: " 2026-10-26,..."
+                if (payload.startsWith('"') && payload.endsWith('"')) {
+                    try {
+                        return JSON.parse(payload);
+                    } catch(err) {
+                        return payload.slice(1, -1);
+                    }
+                }
+                return null;
+            }
+        }
+
+        // ==================== 纯内存 K线/分时缓存表 (零磁盘/localStorage污染，纯堆内存驻留) ====================
+        const klineMemoryCache = new Map(); // key: normUrl, value: { data: any, expireAt: number }
+
+        function getKlineFromMemoryCache(normUrl) {
+            const item = klineMemoryCache.get(normUrl);
+            if (!item) return null;
+            if (Date.now() > item.expireAt) {
+                klineMemoryCache.delete(normUrl);
+                return null;
+            }
+            return item.data;
+        }
+
+        function setKlineMemoryCache(normUrl, data, customTtlMs) {
+            if (!data) return;
+            // 超过 150 条时清理最老记录，保持常驻堆内存极小 (< 2MB)
+            if (klineMemoryCache.size > 150) {
+                const oldestKey = klineMemoryCache.keys().next().value;
+                klineMemoryCache.delete(oldestKey);
+            }
+            let ttl = customTtlMs;
+            if (!ttl) {
+                if (!isTradingNow()) {
+                    ttl = 15 * 60 * 1000; // 休市/周末：纯内存缓存 15 分钟
+                } else {
+                    const isDaily = normUrl.includes('Daily') || normUrl.includes('daily') || normUrl.includes('type=101');
+                    ttl = isDaily ? 60 * 1000 : 10 * 1000; // 盘中：日线 60s，分时/5分 10s
+                }
+            }
+            klineMemoryCache.set(normUrl, { data, expireAt: Date.now() + ttl });
+        }
+
+        // 统一高可用数据加载器：
+        // 1. 客户端纯内存快速命中 (0ms 瞬开，零磁盘写开销)
+        // 2. 经由 Cloudflare Worker 代理 (/api/sina-stock?url=...) 异步 fetch，配合 Worker 边缘 Cache API
+        // 3. 备用兜底：若非 worker 部署环境或离线本地，自动平滑降级为原生 JSONP 脚本加载
+        async function loadSinaFuturesJsonp(url) {
+            const prefix = '';
+            // 规范化 URL：将 CALLBACK_VAR 替换为统一变量 _f，以最大化命中纯内存及 Worker Edge Cache
+            const normUrl = url.replace('CALLBACK_VAR', '_f');
+
+            // 1. 优先检查客户端纯内存缓存 (0ms 瞬开)
+            const memHit = getKlineFromMemoryCache(normUrl);
+            if (memHit) {
+                return memHit;
+            }
+
+            // 2. 优先通过 Worker 代理异步拉取（标准 Fetch + 纯 JSON 解析，0 跨域风险，移动端极速稳定）
+            try {
+                const proxyUrl = prefix + '/api/sina-stock?url=' + encodeURIComponent(normUrl);
+                const resp = await fetch(proxyUrl);
+                if (resp.ok) {
+                    const text = await resp.text();
+                    const data = parseSinaJsonpResponse(text);
+                    if (data) {
+                        setKlineMemoryCache(normUrl, data);
+                        return data;
+                    }
+                }
+            } catch (err) {
+                // 静默降级至原生 JSONP
+            }
+
+            // 3. 备用兜底：原生跨域 Script 脚本加载
+            const cbName = 'sina_cb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+            const scriptReqUrl = url.replace('CALLBACK_VAR', cbName);
+
             return new Promise((resolve) => {
-                const cbName = 'sina_cb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
                 const script = document.createElement('script');
-                const reqUrl = url.replace('CALLBACK_VAR', cbName);
                 let receivedData = null;
                 let isHandled = false;
 
@@ -3893,16 +3984,18 @@
                 } catch(e) {}
 
                 const timer = setTimeout(() => {
-                    done(receivedData);
-                }, 4000);
+                    done(receivedData || window[cbName]);
+                }, 5000);
 
                 function done(res) {
                     if (isHandled) return;
                     isHandled = true;
                     if (timer) clearTimeout(timer);
-                    try { delete window[cbName]; } catch(e) {}
+                    try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
                     if (script.parentNode) script.parentNode.removeChild(script);
-                    resolve(res || null);
+                    const finalData = res || null;
+                    if (finalData) setKlineMemoryCache(normUrl, finalData);
+                    resolve(finalData);
                 }
 
                 script.onload = function() {
@@ -3913,9 +4006,73 @@
                     done(null);
                 };
 
-                script.src = reqUrl;
+                script.src = scriptReqUrl;
                 document.head.appendChild(script);
             });
+        }
+
+        // ==================== 大屏核心标的后台静默预热 (Prefetch Engine) ====================
+        function getContractPrefetchUrls(quote) {
+            if (!quote) return [];
+            const marketType = quote.marketType || 'CN_FUTURES';
+            const urls = [];
+            if (marketType === 'CN_FUTURES') {
+                const symbol = getSinaFuturesSymbol(quote.secid, quote.code || '');
+                if (symbol) {
+                    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFourDaysLine?symbol=${symbol}`);
+                    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=5`);
+                }
+            } else if (marketType === 'GLOBAL_FUTURES') {
+                const pureSymbol = (quote.code || quote.secid || '').replace(/^hf_/i, '').toUpperCase();
+                if (pureSymbol) {
+                    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSymbol}`);
+                }
+            } else if (marketType === 'US_STOCK') {
+                const pureSymbol = (quote.code || quote.secid || '').replace(/^gb_/i, '').toLowerCase();
+                if (pureSymbol) {
+                    urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinlineNService.getMinline?symbol=${pureSymbol}&day=5`);
+                }
+            }
+            return urls;
+        }
+
+        let prefetchTimer = null;
+        let isPrefetching = false;
+
+        function schedulePrefetchVisibleContracts() {
+            if (prefetchTimer) clearTimeout(prefetchTimer);
+            // 延迟 1.5 秒启动预热，绝不与主页面首屏渲染/关键交互争抢资源
+            prefetchTimer = setTimeout(() => {
+                prefetchVisibleContractsNow();
+            }, 1500);
+        }
+
+        async function prefetchVisibleContractsNow() {
+            if (activeModalSecId || isPrefetching) return;
+            isPrefetching = true;
+            try {
+                // 优先选取自选池或焦点池前 6 个核心标的
+                const list = (currentMode === 'custom' && customWatchlist && customWatchlist.length > 0)
+                    ? (focusQuotes || []).slice(0, 8)
+                    : (focusQuotes || allPhysicalQuotes || []).slice(0, 6);
+
+                for (const q of list) {
+                    if (activeModalSecId) break; // 用户打开了详情弹窗，立即中止后台预热
+                    const urls = getContractPrefetchUrls(q);
+                    for (const u of urls) {
+                        const normUrl = u.replace('CALLBACK_VAR', '_f');
+                        if (!getKlineFromMemoryCache(normUrl)) {
+                            try {
+                                await loadSinaFuturesJsonp(u);
+                            } catch (e) {}
+                            // 每条预热请求间隔 120ms，温和且平稳，避免瞬时并发
+                            await new Promise(r => setTimeout(r, 120));
+                        }
+                    }
+                }
+            } finally {
+                isPrefetching = false;
+            }
         }
 
         // ==================== PWA 原生路由守卫与手势拦截 (History Guard) ====================

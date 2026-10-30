@@ -286,6 +286,74 @@ async function saveSnapshot(env, diff, minCount = 50) {
 }
 __name(saveSnapshot, "saveSnapshot");
 
+// ==================== 交易时段感知与边缘缓存 (Cloudflare Cache API) ====================
+function getMarketTradingStatus(nowDate = new Date()) {
+  const bjNow = new Date(nowDate.getTime() + 8 * 3600 * 1000);
+  const day = bjNow.getUTCDay(); // 0: 日, 1: 一, ..., 6: 六
+  const hours = bjNow.getUTCHours();
+  const minutes = bjNow.getUTCMinutes();
+  const t = hours * 60 + minutes;
+
+  // 1. 国内商品期货时段 (日盘 08:55-11:35, 13:25-15:05; 夜盘 20:55-02:35)
+  let isDomesticTrading = false;
+  if (day === 0) {
+    isDomesticTrading = false;
+  } else if (day === 6) {
+    isDomesticTrading = (t <= 2 * 60 + 35); // 周六凌晨承接周五夜盘至 02:30
+  } else if (day === 1) {
+    const isDay = (t >= 8 * 60 + 55 && t <= 11 * 60 + 35) || (t >= 13 * 60 + 25 && t <= 15 * 60 + 5);
+    const isNight = (t >= 20 * 60 + 55 && t <= 24 * 60);
+    isDomesticTrading = isDay || isNight;
+  } else {
+    const isEarlyNight = (t <= 2 * 60 + 35);
+    const isDay = (t >= 8 * 60 + 55 && t <= 11 * 60 + 35) || (t >= 13 * 60 + 25 && t <= 15 * 60 + 5);
+    const isNight = (t >= 20 * 60 + 55 && t <= 24 * 60);
+    isDomesticTrading = isEarlyNight || isDay || isNight;
+  }
+
+  // 2. 外盘期货/全球主流资产时段 (周一 06:00 至 周六 05:00 CST 几近连续运行)
+  let isGlobalTrading = false;
+  if (day === 0) {
+    isGlobalTrading = false;
+  } else if (day === 6) {
+    isGlobalTrading = (t <= 5 * 60 + 5); // 周六早晨 05:00 收盘
+  } else if (day === 1) {
+    isGlobalTrading = (t >= 6 * 60);
+  } else {
+    isGlobalTrading = !(t >= 5 * 60 && t <= 6 * 60);
+  }
+
+  const isWeekend = (day === 0 || (day === 6 && t > 5 * 60) || (day === 1 && t < 6 * 60));
+
+  return {
+    isDomesticTrading,
+    isGlobalTrading,
+    isAnyTrading: isDomesticTrading || isGlobalTrading,
+    isWeekend
+  };
+}
+__name(getMarketTradingStatus, "getMarketTradingStatus");
+
+function getStockCacheTtl(targetUrl, tradingStatus) {
+  const isDomestic = targetUrl.includes("InnerFuturesNewService");
+  const isDaily = targetUrl.includes("Daily") || targetUrl.includes("daily") || targetUrl.includes("type=101");
+
+  if (isDomestic) {
+    if (!tradingStatus.isDomesticTrading) {
+      // 国内休市：周末长效 4 小时，工作日休市 30 分钟 (数据已定格，大幅削减新浪回源)
+      return tradingStatus.isWeekend ? 14400 : 1800;
+    }
+    // 盘中：日K 60秒，分时与5分钟 10秒
+    return isDaily ? 60 : 10;
+  } else {
+    if (!tradingStatus.isGlobalTrading) {
+      return tradingStatus.isWeekend ? 14400 : 1800;
+    }
+    return isDaily ? 60 : 10;
+  }
+}
+__name(getStockCacheTtl, "getStockCacheTtl");
+
 var index_default = {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
@@ -325,27 +393,131 @@ var index_default = {
       let list = url.searchParams.get("list");
       if (!list) return new Response("", { status: 400 });
       // 自动规范化大小写 (外盘期货 hf_CL/hf_GC 必须大写，美股 gb_nvda/gb_aapl 必须小写)
-      list = list.split(",").map(sym => {
+      const symArr = list.split(",").map(sym => {
         const s = sym.trim();
         if (s.toLowerCase().startsWith("hf_")) return "hf_" + s.slice(3).toUpperCase();
         if (s.toLowerCase().startsWith("gb_")) return "gb_" + s.slice(3).toLowerCase();
         return s;
-      }).join(",");
+      }).filter(Boolean);
+
+      // 规范排序构造确定的 Edge Cache Key，避免列表项顺序不同打散缓存
+      const sortedList = [...symArr].sort().join(",");
+      const cacheUrlObj = new URL(request.url);
+      cacheUrlObj.searchParams.set("list", sortedList);
+      cacheUrlObj.searchParams.delete("_t");
+      const cacheKey = new Request(cacheUrlObj.toString(), { method: "GET" });
+
+      const cache = caches.default;
       try {
-        const sinaResp = await fetch("https://hq.sinajs.cn/list=" + list, {
+        const cachedResp = await cache.match(cacheKey);
+        if (cachedResp) {
+          const hitHeaders = new Headers(cachedResp.headers);
+          hitHeaders.set("x-cf-cache", "HIT");
+          return new Response(cachedResp.body, {
+            status: cachedResp.status,
+            headers: hitHeaders
+          });
+        }
+      } catch (ce) {}
+
+      try {
+        const sinaResp = await fetch("https://hq.sinajs.cn/list=" + sortedList, {
           headers: {
             "Referer": "https://finance.sina.com.cn",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
           }
         });
-        return new Response(sinaResp.body, {
-          status: sinaResp.status,
+        if (!sinaResp.ok) {
+          return new Response("// error upstream: " + sinaResp.status, { status: sinaResp.status });
+        }
+
+        const buf = await sinaResp.arrayBuffer();
+        const tradingStatus = getMarketTradingStatus();
+        // 盘中高频 3 秒削峰；休市/周末缓存 180~600 秒
+        const edgeTtl = tradingStatus.isAnyTrading ? 3 : (tradingStatus.isWeekend ? 600 : 180);
+        const clientTtl = tradingStatus.isAnyTrading ? 2 : 30;
+
+        const responseToReturn = new Response(buf, {
+          status: 200,
           headers: {
             "content-type": "application/javascript; charset=gb18030",
-            "cache-control": "no-cache, no-store",
-            "access-control-allow-origin": "*"
+            "cache-control": `public, max-age=${clientTtl}, s-maxage=${edgeTtl}`,
+            "access-control-allow-origin": "*",
+            "x-cf-cache": "MISS"
           }
         });
+
+        if (ctx && ctx.waitUntil) {
+          ctx.waitUntil(cache.put(cacheKey, responseToReturn.clone()));
+        }
+        return responseToReturn;
+      } catch (e) {
+        return new Response("// error: " + (e && e.message || String(e)), { status: 502 });
+      }
+    }
+    if (url.pathname === "/api/sina-stock") {
+      const targetUrl = url.searchParams.get("url");
+      if (!targetUrl) return new Response("Missing url", { status: 400 });
+      try {
+        const parsed = new URL(targetUrl);
+        if (!parsed.hostname.endsWith(".sina.com.cn") && parsed.hostname !== "sina.com.cn") {
+          return new Response("Forbidden host", { status: 403 });
+        }
+
+        // 规范化 URL：将 JSONP 随机回调变量替换为统一的 _f，保证相同品种/时期的请求共享同一个 Edge Cache
+        const normalizedTarget = targetUrl
+          .replace(/\/var%20[^=]+=\//i, "/var%20_f=/")
+          .replace(/\/var\s+[^=]+=\//i, "/var%20_f=/");
+
+        const cacheUrlObj = new URL(request.url);
+        cacheUrlObj.searchParams.set("url", normalizedTarget);
+        cacheUrlObj.searchParams.delete("_t");
+        const cacheKey = new Request(cacheUrlObj.toString(), { method: "GET" });
+
+        const cache = caches.default;
+        try {
+          const cachedResp = await cache.match(cacheKey);
+          if (cachedResp) {
+            const hitHeaders = new Headers(cachedResp.headers);
+            hitHeaders.set("x-cf-cache", "HIT");
+            return new Response(cachedResp.body, {
+              status: cachedResp.status,
+              headers: hitHeaders
+            });
+          }
+        } catch (ce) {}
+
+        const resp = await fetch(targetUrl, {
+          headers: {
+            "Referer": "https://finance.sina.com.cn",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+          }
+        });
+        if (!resp.ok) {
+          return new Response("// error upstream: " + resp.status, { status: resp.status });
+        }
+
+        const buf = await resp.arrayBuffer();
+        const text = new TextDecoder("gb18030").decode(buf);
+
+        const tradingStatus = getMarketTradingStatus();
+        const edgeTtl = getStockCacheTtl(targetUrl, tradingStatus);
+        const clientTtl = tradingStatus.isWeekend ? 300 : (edgeTtl >= 60 ? 15 : 5);
+
+        const responseToReturn = new Response(text, {
+          status: 200,
+          headers: {
+            "content-type": "application/javascript; charset=utf-8",
+            "cache-control": `public, max-age=${clientTtl}, s-maxage=${edgeTtl}`,
+            "access-control-allow-origin": "*",
+            "x-cf-cache": "MISS"
+          }
+        });
+
+        if (ctx && ctx.waitUntil) {
+          ctx.waitUntil(cache.put(cacheKey, responseToReturn.clone()));
+        }
+        return responseToReturn;
       } catch (e) {
         return new Response("// error: " + (e && e.message || String(e)), { status: 502 });
       }

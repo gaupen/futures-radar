@@ -1,5 +1,6 @@
 node_modules/
 .wrangler/
 dist/
+backup/
 .DS_Store
 Thumbs.db
