@@ -3933,31 +3933,42 @@
             return raw;
         }
 
-        // 解析新浪 JSONP 文本载荷为原生 JS 对象/数组/字符串 (精准清洗防盗链注释与回调头)
+        // 解析新浪 JSONP 文本载荷为原生 JS 对象/数组/字符串 (吸收 watchlist-board 首尾符号切片法，零正则无缝免疫防盗链)
         function parseSinaJsonpResponse(text) {
             if (!text || typeof text !== 'string') return null;
-            // 彻底剔除新浪特征防盗链块级注释
-            const cleanText = text.replace(/\/\*[\s\S]*?\*\//g, '').trim();
-            const eqIdx = cleanText.indexOf('=');
-            if (eqIdx === -1) return null;
-            let payload = cleanText.slice(eqIdx + 1).trim();
-            if (payload.endsWith(';')) payload = payload.slice(0, -1).trim();
-            if (payload.startsWith('(') && payload.endsWith(')')) {
-                payload = payload.slice(1, -1).trim();
+
+            // 1. 数组最外层括号切片 (国内期货 K线/分时线，彻底免疫防盗链注释与回调前缀)
+            const sArr = text.indexOf('[');
+            const eArr = text.lastIndexOf(']');
+            if (sArr >= 0 && eArr > sArr) {
+                try {
+                    const arr = JSON.parse(text.slice(sArr, eArr + 1));
+                    if (Array.isArray(arr)) return arr;
+                } catch(e) {}
             }
-            try {
-                return JSON.parse(payload);
-            } catch(e) {
-                // 如果是美股 5 日分时的纯双引号包裹字符串: " 2026-10-26,..."
-                if (payload.startsWith('"') && payload.endsWith('"')) {
-                    try {
-                        return JSON.parse(payload);
-                    } catch(err) {
-                        return payload.slice(1, -1);
-                    }
+
+            // 2. 对象最外层花括号切片 (外盘期货如 minLine_1d 对象)
+            const sObj = text.indexOf('{');
+            const eObj = text.lastIndexOf('}');
+            if (sObj >= 0 && eObj > sObj) {
+                try {
+                    const obj = JSON.parse(text.slice(sObj, eObj + 1));
+                    if (obj && typeof obj === 'object') return obj;
+                } catch(e) {}
+            }
+
+            // 3. 美股 5 日分时纯双引号包裹字符串: " 2026-10-26,..."
+            const sQuote = text.indexOf('"');
+            const eQuote = text.lastIndexOf('"');
+            if (sQuote >= 0 && eQuote > sQuote) {
+                try {
+                    return JSON.parse(text.slice(sQuote, eQuote + 1));
+                } catch(err) {
+                    return text.slice(sQuote + 1, eQuote);
                 }
-                return null;
             }
+
+            return null;
         }
 
         // ==================== 图表 3 级缓存数据源指示器 ====================

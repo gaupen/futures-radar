@@ -1,9 +1,10 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// src/worker/index.js - Build: 2026-10-27-multi-market-v2-pure-sina
+// src/worker/index.js - Build: 2026-10-31-prewarm-robust-v3
 var KV_KEY = "snapshot:latest";
 var WATCHLIST_KV_KEY = "watchlist:global";
+var CACHE_VER = "r20261031-1";
 var FOREIGN_ARCHIVE_SYMBOLS = ["CL", "OIL", "GC", "SI", "HG", "CAD", "ZSD", "NG", "S", "C"];
 
 function jsonResp(obj, status) {
@@ -434,6 +435,8 @@ async function warmSingleTargetUrl(targetUrl, requestUrl, cache, tradingStatus) 
   const cacheUrlObj = new URL(requestUrl);
   cacheUrlObj.pathname = "/api/sina-stock";
   cacheUrlObj.search = "?url=" + encodeURIComponent(normalizedTarget);
+  cacheUrlObj.searchParams.delete("force");
+  cacheUrlObj.searchParams.set("_cv", CACHE_VER);
   const cacheKey = new Request(cacheUrlObj.toString(), { method: "GET" });
 
   try {
@@ -443,12 +446,16 @@ async function warmSingleTargetUrl(targetUrl, requestUrl, cache, tradingStatus) 
     }
   } catch (e) {}
 
+  const edgeTtl = getStockCacheTtl(normalizedTarget, tradingStatus);
+
   try {
     const resp = await fetch(normalizedTarget, {
+      signal: AbortSignal.timeout(8000),
       headers: {
         "Referer": "https://finance.sina.com.cn",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-      }
+      },
+      cf: { cacheTtl: edgeTtl }
     });
     if (!resp.ok) {
       return { url: normalizedTarget, status: "error", code: resp.status };
@@ -458,7 +465,6 @@ async function warmSingleTargetUrl(targetUrl, requestUrl, cache, tradingStatus) 
     let text = new TextDecoder("gb18030").decode(buf);
     text = text.replace(/\/\*[\s\S]*?\*\//g, "").trim();
 
-    const edgeTtl = getStockCacheTtl(normalizedTarget, tradingStatus);
     const clientTtl = tradingStatus.isWeekend ? 300 : (edgeTtl >= 60 ? 15 : 5);
 
     const responseToCache = new Response(text, {
@@ -531,6 +537,8 @@ var index_default = {
       const cacheUrlObj = new URL(request.url);
       cacheUrlObj.searchParams.set("list", sortedList);
       cacheUrlObj.searchParams.delete("_t");
+      cacheUrlObj.searchParams.delete("force");
+      cacheUrlObj.searchParams.set("_cv", CACHE_VER);
       const cacheKey = new Request(cacheUrlObj.toString(), { method: "GET" });
 
       const cache = caches.default;
@@ -547,21 +555,24 @@ var index_default = {
       } catch (ce) {}
 
       try {
+        const tradingStatus = getMarketTradingStatus();
+        // 盘中高频 3 秒削峰；休市/周末缓存 180~600 秒
+        const edgeTtl = tradingStatus.isAnyTrading ? 3 : (tradingStatus.isWeekend ? 600 : 180);
+        const clientTtl = tradingStatus.isAnyTrading ? 2 : 30;
+
         const sinaResp = await fetch("https://hq.sinajs.cn/list=" + sortedList, {
+          signal: AbortSignal.timeout(8000),
           headers: {
             "Referer": "https://finance.sina.com.cn",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-          }
+          },
+          cf: { cacheTtl: edgeTtl }
         });
         if (!sinaResp.ok) {
           return new Response("// error upstream: " + sinaResp.status, { status: sinaResp.status });
         }
 
         const buf = await sinaResp.arrayBuffer();
-        const tradingStatus = getMarketTradingStatus();
-        // 盘中高频 3 秒削峰；休市/周末缓存 180~600 秒
-        const edgeTtl = tradingStatus.isAnyTrading ? 3 : (tradingStatus.isWeekend ? 600 : 180);
-        const clientTtl = tradingStatus.isAnyTrading ? 2 : 30;
 
         const responseToReturn = new Response(buf, {
           status: 200,
@@ -595,31 +606,45 @@ var index_default = {
           .replace(/\/var%20[^=]+=\//i, "/var%20_f=/")
           .replace(/\/var\s+[^=]+=\//i, "/var%20_f=/");
 
+        const tradingStatus = getMarketTradingStatus();
+        const isClosed = !tradingStatus.isAnyTrading;
+        const wantForce = url.searchParams.get("force") === "1";
+        // 休市期间强行阻止回源新浪（数据定格，避免无效穿透）
+        const force = wantForce && !isClosed;
+
         const cacheUrlObj = new URL(request.url);
         cacheUrlObj.searchParams.set("url", normalizedTarget);
         cacheUrlObj.searchParams.delete("_t");
+        cacheUrlObj.searchParams.delete("force");
+        cacheUrlObj.searchParams.set("_cv", CACHE_VER);
         const cacheKey = new Request(cacheUrlObj.toString(), { method: "GET" });
 
         const cache = caches.default;
-        try {
-          const cachedResp = await cache.match(cacheKey);
-          if (cachedResp) {
-            const hitHeaders = new Headers(cachedResp.headers);
-            hitHeaders.set("x-cf-cache", "HIT");
-            hitHeaders.set("access-control-allow-origin", "*");
-            hitHeaders.set("access-control-expose-headers", "x-cf-cache");
-            return new Response(cachedResp.body, {
-              status: cachedResp.status,
-              headers: hitHeaders
-            });
-          }
-        } catch (ce) {}
+        if (!force) {
+          try {
+            const cachedResp = await cache.match(cacheKey);
+            if (cachedResp) {
+              const hitHeaders = new Headers(cachedResp.headers);
+              hitHeaders.set("x-cf-cache", "HIT");
+              hitHeaders.set("access-control-allow-origin", "*");
+              hitHeaders.set("access-control-expose-headers", "x-cf-cache");
+              return new Response(cachedResp.body, {
+                status: cachedResp.status,
+                headers: hitHeaders
+              });
+            }
+          } catch (ce) {}
+        }
+
+        const edgeTtl = getStockCacheTtl(targetUrl, tradingStatus);
 
         const resp = await fetch(targetUrl, {
+          signal: AbortSignal.timeout(8000),
           headers: {
             "Referer": "https://finance.sina.com.cn",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-          }
+          },
+          cf: { cacheTtl: edgeTtl }
         });
         if (!resp.ok) {
           return new Response("// error upstream: " + resp.status, { status: resp.status });
@@ -630,22 +655,21 @@ var index_default = {
         // 彻底剔除新浪特征防盗链注释 /*<script>location.href='//sina.com';</script>*/，确保下游 JSONP 极速准确解析
         text = text.replace(/\/\*[\s\S]*?\*\//g, "").trim();
 
-        const tradingStatus = getMarketTradingStatus();
-        const edgeTtl = getStockCacheTtl(targetUrl, tradingStatus);
         const clientTtl = tradingStatus.isWeekend ? 300 : (edgeTtl >= 60 ? 15 : 5);
+        const xc = force ? "BYPASS" : "MISS";
 
         const responseToReturn = new Response(text, {
           status: 200,
           headers: {
             "content-type": "application/javascript; charset=utf-8",
-            "cache-control": `public, max-age=${clientTtl}, s-maxage=${edgeTtl}`,
+            "cache-control": force ? "no-store" : `public, max-age=${clientTtl}, s-maxage=${edgeTtl}`,
             "access-control-allow-origin": "*",
             "access-control-expose-headers": "x-cf-cache",
-            "x-cf-cache": "MISS"
+            "x-cf-cache": xc
           }
         });
 
-        if (ctx && ctx.waitUntil) {
+        if (!force && ctx && ctx.waitUntil) {
           ctx.waitUntil(cache.put(cacheKey, responseToReturn.clone()));
         }
         return responseToReturn;
