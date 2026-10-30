@@ -4,7 +4,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 // src/worker/index.js - Build: 2026-10-31-prewarm-robust-v3
 var KV_KEY = "snapshot:latest";
 var WATCHLIST_KV_KEY = "watchlist:global";
-var CACHE_VER = "r20261031-1";
+var CACHE_VER = "r20261031-2";
 var FOREIGN_ARCHIVE_SYMBOLS = ["CL", "OIL", "GC", "SI", "HG", "CAD", "ZSD", "NG", "S", "C"];
 
 function jsonResp(obj, status) {
@@ -355,7 +355,7 @@ function getStockCacheTtl(targetUrl, tradingStatus) {
 }
 __name(getStockCacheTtl, "getStockCacheTtl");
 
-function getSinaUrlsForCode(code, types = ["15", "trend", "5", "101"]) {
+function getSinaUrlsForCode(code, types = ["15", "trend", "5", "60", "101"]) {
   const c = String(code || "").trim();
   if (!c) return [];
 
@@ -385,6 +385,9 @@ function getSinaUrlsForCode(code, types = ["15", "trend", "5", "101"]) {
     if (typeSet.has("5")) {
       urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_f=/US_MinKService.getMinK?symbol=${pure}&type=5`);
     }
+    if (typeSet.has("60")) {
+      urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_f=/US_MinKService.getMinK?symbol=${pure}&type=60`);
+    }
     if (typeSet.has("101")) {
       urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_f=/US_MinKService.getDailyK?symbol=${pure}`);
     }
@@ -408,6 +411,9 @@ function getSinaUrlsForCode(code, types = ["15", "trend", "5", "101"]) {
   }
   if (typeSet.has("5")) {
     urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/InnerFuturesNewService.getFewMinLine?symbol=${raw}&type=5`);
+  }
+  if (typeSet.has("60")) {
+    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/InnerFuturesNewService.getFewMinLine?symbol=${raw}&type=60`);
   }
   if (typeSet.has("101")) {
     urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/InnerFuturesNewService.getDailyKLine?symbol=${raw}`);
@@ -692,7 +698,7 @@ var index_default = {
 
       let codes = [];
       let urls = [];
-      let types = ["15", "trend", "5", "101"];
+      let types = ["15", "trend", "5", "60", "101"];
       let from = 0;
       let limit = 4;
 
