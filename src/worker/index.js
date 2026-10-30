@@ -354,6 +354,132 @@ function getStockCacheTtl(targetUrl, tradingStatus) {
 }
 __name(getStockCacheTtl, "getStockCacheTtl");
 
+function getSinaUrlsForCode(code, types = ["15", "trend", "5", "101"]) {
+  const c = String(code || "").trim();
+  if (!c) return [];
+
+  const typeSet = new Set(types);
+
+  if (c.toLowerCase().startsWith("hf_")) {
+    const pure = c.slice(3).toUpperCase();
+    const urls = [];
+    if (typeSet.has("trend") || typeSet.has("15") || typeSet.has("5") || typeSet.has("60")) {
+      urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pure}`);
+    }
+    if (typeSet.has("101")) {
+      urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=${pure}`);
+    }
+    return urls;
+  }
+
+  if (c.toLowerCase().startsWith("gb_")) {
+    const pure = c.slice(3).toLowerCase();
+    const urls = [];
+    if (typeSet.has("15")) {
+      urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_f=/US_MinKService.getMinK?symbol=${pure}&type=15`);
+    }
+    if (typeSet.has("trend")) {
+      urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_f=/US_MinlineNService.getMinline?symbol=${pure}&day=5`);
+    }
+    if (typeSet.has("5")) {
+      urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_f=/US_MinKService.getMinK?symbol=${pure}&type=5`);
+    }
+    if (typeSet.has("101")) {
+      urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_f=/US_MinKService.getDailyK?symbol=${pure}`);
+    }
+    return urls;
+  }
+
+  // 国内期货 (提取纯品种+年月代码，如 113.rb2701 -> RB2701, 115.MA605 -> MA2605)
+  let raw = c.includes(".") ? c.split(".")[1] : c;
+  raw = raw.toUpperCase().trim();
+  const m3 = raw.match(/^([A-Z]+)(\d)(\d{2})$/);
+  if (m3) {
+    raw = `${m3[1]}2${m3[2]}${m3[3]}`;
+  }
+
+  const urls = [];
+  if (typeSet.has("15")) {
+    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/InnerFuturesNewService.getFewMinLine?symbol=${raw}&type=15`);
+  }
+  if (typeSet.has("trend")) {
+    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/InnerFuturesNewService.getFourDaysLine?symbol=${raw}`);
+  }
+  if (typeSet.has("5")) {
+    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/InnerFuturesNewService.getFewMinLine?symbol=${raw}&type=5`);
+  }
+  if (typeSet.has("101")) {
+    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_f=/InnerFuturesNewService.getDailyKLine?symbol=${raw}`);
+  }
+  return urls;
+}
+__name(getSinaUrlsForCode, "getSinaUrlsForCode");
+
+async function warmSingleTargetUrl(targetUrl, requestUrl, cache, tradingStatus) {
+  if (!targetUrl) return { url: targetUrl, status: "skip" };
+
+  try {
+    const parsed = new URL(targetUrl);
+    if (!parsed.hostname.endsWith(".sina.com.cn") && parsed.hostname !== "sina.com.cn") {
+      return { url: targetUrl, status: "forbidden" };
+    }
+  } catch (e) {
+    return { url: targetUrl, status: "invalid_url" };
+  }
+
+  const normalizedTarget = targetUrl
+    .replace(/\/var%20[^=]+=\//i, "/var%20_f=/")
+    .replace(/\/var\s+[^=]+=\//i, "/var%20_f=/");
+
+  const cacheUrlObj = new URL(requestUrl);
+  cacheUrlObj.pathname = "/api/sina-stock";
+  cacheUrlObj.search = "?url=" + encodeURIComponent(normalizedTarget);
+  const cacheKey = new Request(cacheUrlObj.toString(), { method: "GET" });
+
+  try {
+    const existing = await cache.match(cacheKey);
+    if (existing) {
+      return { url: normalizedTarget, status: "already_cached" };
+    }
+  } catch (e) {}
+
+  try {
+    const resp = await fetch(normalizedTarget, {
+      headers: {
+        "Referer": "https://finance.sina.com.cn",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      }
+    });
+    if (!resp.ok) {
+      return { url: normalizedTarget, status: "error", code: resp.status };
+    }
+
+    const buf = await resp.arrayBuffer();
+    let text = new TextDecoder("gb18030").decode(buf);
+    text = text.replace(/\/\*[\s\S]*?\*\//g, "").trim();
+
+    const edgeTtl = getStockCacheTtl(normalizedTarget, tradingStatus);
+    const clientTtl = tradingStatus.isWeekend ? 300 : (edgeTtl >= 60 ? 15 : 5);
+
+    const responseToCache = new Response(text, {
+      status: 200,
+      headers: {
+        "content-type": "application/javascript; charset=utf-8",
+        "cache-control": `public, max-age=${clientTtl}, s-maxage=${edgeTtl}`,
+        "access-control-allow-origin": "*",
+        "access-control-expose-headers": "x-cf-cache",
+        "x-cf-cache": "MISS"
+      }
+    });
+
+    await cache.put(cacheKey, responseToCache.clone());
+    return { url: normalizedTarget, status: "warmed", ttl: edgeTtl };
+  } catch (err) {
+    return { url: normalizedTarget, status: "error", error: err && err.message || String(err) };
+  }
+}
+__name(warmSingleTargetUrl, "warmSingleTargetUrl");
+
 var index_default = {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
@@ -526,6 +652,102 @@ var index_default = {
       } catch (e) {
         return new Response("// error: " + (e && e.message || String(e)), { status: 502 });
       }
+    }
+    if (url.pathname === "/api/warm") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "access-control-allow-origin": "*",
+            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-headers": "content-type",
+            "access-control-max-age": "86400"
+          }
+        });
+      }
+
+      let codes = [];
+      let urls = [];
+      let types = ["15", "trend", "5", "101"];
+      let from = 0;
+      let limit = 4;
+
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          if (Array.isArray(body.urls)) urls = body.urls;
+          if (Array.isArray(body.codes)) codes = body.codes;
+          if (Array.isArray(body.types)) types = body.types;
+          if (typeof body.from === "number") from = body.from;
+          if (typeof body.limit === "number") limit = body.limit;
+        } catch (e) {}
+      } else {
+        const rawCodes = url.searchParams.get("codes") || url.searchParams.get("symbols");
+        if (rawCodes) codes = rawCodes.split(",").map(s => s.trim()).filter(Boolean);
+        const rawUrls = url.searchParams.get("urls");
+        if (rawUrls) urls = rawUrls.split(",").map(u => u.trim()).filter(Boolean);
+        const rawTypes = url.searchParams.get("types");
+        if (rawTypes) types = rawTypes.split(",").map(t => t.trim()).filter(Boolean);
+        const pFrom = parseInt(url.searchParams.get("from") || "0", 10);
+        const pLimit = parseInt(url.searchParams.get("limit") || "4", 10);
+        if (!isNaN(pFrom) && pFrom >= 0) from = pFrom;
+        if (!isNaN(pLimit) && pLimit > 0) limit = pLimit;
+      }
+
+      // 严格限制每批处理的标的数量上限为 6（每个标的约 2-4 条子请求，确保绝不超过 Workers 免费版 50 次子请求上限）
+      limit = Math.min(Math.max(limit, 1), 6);
+
+      if (codes.length > 0 && urls.length === 0) {
+        const codeSlice = codes.slice(from, from + limit);
+        for (const c of codeSlice) {
+          urls.push(...getSinaUrlsForCode(c, types));
+        }
+      } else if (urls.length > 0) {
+        urls = urls.slice(from, from + (limit * 4));
+      }
+
+      if (urls.length === 0) {
+        return jsonResp({ ok: true, count: 0, warmed: 0, cached: 0, total: 0, nextFrom: -1 });
+      }
+
+      const cache = caches.default;
+      const tradingStatus = getMarketTradingStatus();
+
+      const results = await Promise.allSettled(urls.map(targetUrl => {
+        return warmSingleTargetUrl(targetUrl, request.url, cache, tradingStatus);
+      }));
+
+      let warmedCount = 0;
+      let cachedCount = 0;
+      let errorCount = 0;
+
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          if (r.value.status === "warmed") warmedCount++;
+          else if (r.value.status === "already_cached") cachedCount++;
+          else if (r.value.status === "error") errorCount++;
+        } else {
+          errorCount++;
+        }
+      }
+
+      const nextFrom = (codes.length > 0 && from + limit < codes.length) ? (from + limit) : -1;
+
+      return jsonResp({
+        ok: true,
+        totalCodes: codes.length,
+        from,
+        limit,
+        nextFrom,
+        urlsCount: urls.length,
+        warmed: warmedCount,
+        cached: cachedCount,
+        errors: errorCount,
+        tradingStatus: {
+          isAnyTrading: tradingStatus.isAnyTrading,
+          isWeekend: tradingStatus.isWeekend
+        }
+      });
     }
     if (url.pathname === "/api/history/foreign-min") {
       if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);

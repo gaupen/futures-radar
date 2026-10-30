@@ -4097,7 +4097,7 @@
             });
         }
 
-        // ==================== 大屏核心标的后台静默预热 (Prefetch Engine) ====================
+        // ==================== 大屏核心标的激进预热引擎 (Aggressive Prewarm Pipeline) ====================
         function getContractPrefetchUrls(quote) {
             if (!quote) return [];
             const marketType = quote.marketType || 'CN_FUTURES';
@@ -4105,54 +4105,96 @@
             if (marketType === 'CN_FUTURES') {
                 const symbol = getSinaFuturesSymbol(quote.secid, quote.code || '');
                 if (symbol) {
+                    // 1. 15分钟 K 线 (弹窗默认首屏激活Tab，最高优先级)
+                    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=15`);
+                    // 2. 四日分时线 (常用核心分时对比)
                     urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFourDaysLine?symbol=${symbol}`);
+                    // 3. 5分钟 K 线
                     urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getFewMinLine?symbol=${symbol}&type=5`);
+                    // 4. 日 K 线
+                    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/InnerFuturesNewService.getDailyKLine?symbol=${symbol}`);
                 }
             } else if (marketType === 'GLOBAL_FUTURES') {
                 const pureSymbol = (quote.code || quote.secid || '').replace(/^hf_/i, '').toUpperCase();
                 if (pureSymbol) {
+                    // 外盘单日分时 (兼做 5m/15m/60m 聚合基石)
                     urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesMinLine?symbol=${pureSymbol}`);
+                    // 外盘日 K 线
+                    urls.push(`https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20CALLBACK_VAR=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=${pureSymbol}`);
                 }
             } else if (marketType === 'US_STOCK') {
                 const pureSymbol = (quote.code || quote.secid || '').replace(/^gb_/i, '').toLowerCase();
                 if (pureSymbol) {
+                    urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getMinK?symbol=${pureSymbol}&type=15`);
                     urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinlineNService.getMinline?symbol=${pureSymbol}&day=5`);
+                    urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getMinK?symbol=${pureSymbol}&type=5`);
+                    urls.push(`https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20CALLBACK_VAR=/US_MinKService.getDailyK?symbol=${pureSymbol}`);
                 }
             }
             return urls;
         }
 
         let prefetchTimer = null;
+        let isEdgeWarming = false;
         let isPrefetching = false;
 
         function schedulePrefetchVisibleContracts() {
             if (prefetchTimer) clearTimeout(prefetchTimer);
-            // 延迟 1.5 秒启动预热，绝不与主页面首屏渲染/关键交互争抢资源
+            // 延迟 1.2 秒启动预热，绝不与主页面首屏渲染/关键交互争抢资源
             prefetchTimer = setTimeout(() => {
-                prefetchVisibleContractsNow();
-            }, 1500);
+                warmVisibleContractsPipeline();
+            }, 1200);
         }
 
-        async function prefetchVisibleContractsNow() {
+        async function warmVisibleContractsPipeline() {
+            if (activeModalSecId || isEdgeWarming) return;
+            isEdgeWarming = true;
+            try {
+                // 1. 选取当前大屏前 16 个核心合约（覆盖全屏视图，移动端与 PC 端全覆盖）
+                const list = (currentMode === 'custom' && customWatchlist && customWatchlist.length > 0)
+                    ? (focusQuotes || []).slice(0, 16)
+                    : (focusQuotes || allPhysicalQuotes || []).slice(0, 16);
+
+                const codes = list.map(q => q.code || q.secid).filter(Boolean);
+                if (!codes.length) return;
+
+                // 2. 第一阶段：服务端边缘激进预热 (Cloudflare Edge Cache 批量下发，每批 4 个标的 = 约 16 次子请求，留足 Workers 50 次限额余量)
+                const joined = codes.join(',');
+                const BATCH = 4;
+                for (let from = 0; from < codes.length; from += BATCH) {
+                    if (activeModalSecId) break; // 若用户正在查阅图表，即刻让道
+                    try {
+                        const warmUrl = `/api/warm?codes=${encodeURIComponent(joined)}&from=${from}&limit=${BATCH}&types=15,trend,5,101`;
+                        await fetch(warmUrl, { keepalive: true }).catch(() => null);
+                    } catch (e) {}
+                    // 批次间微休 120ms，保持边缘与客户端执行极度平稳
+                    await new Promise(r => setTimeout(r, 120));
+                }
+
+                // 3. 第二阶段：客户端前置内存预填 (针对焦点前 6 个核心标的，从已预热的 Edge Cache 极速载入 JS 堆内存)
+                if (!activeModalSecId) {
+                    await prefetchTopContractsToMemory(list.slice(0, 6));
+                }
+            } finally {
+                isEdgeWarming = false;
+            }
+        }
+
+        async function prefetchTopContractsToMemory(topList) {
             if (activeModalSecId || isPrefetching) return;
             isPrefetching = true;
             try {
-                // 优先选取自选池或焦点池前 6 个核心标的
-                const list = (currentMode === 'custom' && customWatchlist && customWatchlist.length > 0)
-                    ? (focusQuotes || []).slice(0, 8)
-                    : (focusQuotes || allPhysicalQuotes || []).slice(0, 6);
-
-                for (const q of list) {
-                    if (activeModalSecId) break; // 用户打开了详情弹窗，立即中止后台预热
+                for (const q of topList) {
+                    if (activeModalSecId) break;
                     const urls = getContractPrefetchUrls(q);
                     for (const u of urls) {
+                        if (activeModalSecId) break;
                         const normUrl = u.replace('CALLBACK_VAR', '_f');
                         if (!getKlineFromMemoryCache(normUrl)) {
                             try {
                                 await loadSinaFuturesJsonp(u, true);
                             } catch (e) {}
-                            // 每条预热请求间隔 120ms，温和且平稳，避免瞬时并发
-                            await new Promise(r => setTimeout(r, 120));
+                            await new Promise(r => setTimeout(r, 60));
                         }
                     }
                 }
