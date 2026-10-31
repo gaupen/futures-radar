@@ -2407,14 +2407,22 @@
             return NIGHT_TRADING_SYMBOLS.has(sym);
         }
 
-        // 当前是否处于夜盘交易窗口或夜盘收盘后到次日早盘前窗口 (21:00 至 次日 08:50，以及周末全天)
-        // 在此窗口内，市场最新发生的交易是夜盘，无夜盘品种处于日盘定格状态
+        // 当前是否处于夜盘交易窗口或夜盘收盘后到次日早盘前窗口
+        // 注：周末休市期间（周六 02:35 之后至周一 08:50）为全市场彻底休市，非夜盘窗口
         function isNightSessionWindow(date) {
             const d = date || new Date();
-            const day = d.getDay(); // 0: 日, 6: 六
+            const day = d.getDay(); // 0: 日, 1: 一, ..., 6: 六
             const t = minutesOfDay(d);
-            if (day === 6 || day === 0) return true; // 周末市场最新发生的是周五夜盘
-            if (day === 1 && t < 8 * 60 + 50) return true; // 周一早盘前
+
+            // 1. 周末全天（周六 02:35 之后至周一 08:50）：全市场彻底休市，周末非夜盘
+            if (day === 0) return false;
+            if (day === 6 && t > (2 * 60 + 35)) return false;
+            if (day === 1 && t < 8 * 60 + 50) return false;
+
+            // 2. 周六凌晨承接周五夜盘 (00:00 - 02:35)
+            if (day === 6) return t <= (2 * 60 + 35);
+
+            // 3. 周一至周五常规夜盘 (21:00 - 24:00) 及 周二至周五跨日凌晨/早盘前 (00:00 - 08:50)
             return (t >= 21 * 60 || t < 8 * 60 + 50);
         }
 
@@ -2425,14 +2433,17 @@
             const hour = d.getHours();
             const start = new Date(d);
 
-            if (day === 1 && hour < 12) {
-                // 周一早盘前：上一个夜盘是上周五 21:00
-                start.setDate(start.getDate() - 3);
+            if (day === 1) {
+                // 周一：21:00 前的上一个夜盘是上周五 21:00
+                start.setDate(start.getDate() - (hour < 21 ? 3 : 0));
             } else if (day === 0) {
                 // 周日：上一个夜盘是周五 21:00
                 start.setDate(start.getDate() - 2);
-            } else if (hour < 12) {
-                // 周二至周六凌晨/清晨：始于前一日 21:00
+            } else if (day === 6) {
+                // 周六全天：夜盘始于周五 21:00
+                start.setDate(start.getDate() - 1);
+            } else if (hour < 21) {
+                // 周二至周五 21:00 前（日盘或凌晨）：始于前一日 21:00
                 start.setDate(start.getDate() - 1);
             }
             start.setHours(21, 0, 0, 0);
@@ -2454,18 +2465,28 @@
         }
 
         // 判断合约在当前交易时段是否为真实活跃撮合（解决红枣CJ、苹果AP、碳酸锂LC等无夜盘品种日盘停滞数据污染夜盘异动榜的问题）
+        // 关键原则：周末及日盘休市时段为全盘复盘时段，展示最终全量收盘数据，不屏蔽任何正常交易品种
         function isQuoteActiveInCurrentSession(quote, refDate) {
             if (!quote) return false;
             const now = refDate || new Date();
+            const day = now.getDay();
+            const t = minutesOfDay(now);
+
+            // 周末休市时段（周六 02:35 至周一 08:50）：全市场定格，展示本周最终全量收盘数据
+            const isWeekendOff = (day === 0) || (day === 6 && t > 2 * 60 + 35) || (day === 1 && t < 8 * 60 + 50);
+            if (isWeekendOff) {
+                return true;
+            }
+
             if (isNightSessionWindow(now)) {
                 // 1. 交易所硬规则：品种必须具备夜盘资格 (红枣 CJ、苹果 AP、生猪 LH、鸡蛋 JD、碳酸锂 LC、工业硅 SI、欧线 EC 等 100% 隔离)
                 if (!hasNightTrading(quote.code || quote.secid)) return false;
 
                 // 2. 有夜盘品种：检查实际成交时间戳是否处于今晚夜盘中 (杜绝未开盘夜盘品种的日盘旧数据)
-                // 注意：东财服务器会在 21:00:00 广播一次盘前状态戳，因此真实夜盘成交时间必须严格大于 21:00:00
+                // 注意：东财/新浪服务器会在 21:00:00 广播一次盘前状态戳，因此真实夜盘成交时间必须大于等于 21:00:00
                 if (!quote.tradeTime) return true;
                 const nightStart = getNightSessionStartTime(now);
-                return quote.tradeTime > nightStart;
+                return quote.tradeTime >= nightStart;
             }
             // 日盘交易时段 (09:00 - 15:00) 及 日盘收盘后 (15:00 - 21:00)：全市场均已参与日盘，均为有效数据
             return true;
@@ -2704,8 +2725,17 @@
         function updateFilterSummaryText() {
             const summaryEl = document.getElementById('filter-summary-text');
             if (summaryEl) {
+                const now = new Date();
+                const day = now.getDay();
+                const t = minutesOfDay(now);
+                const isWeekendOff = (day === 0) || (day === 6 && t > 2 * 60 + 35) || (day === 1 && t < 8 * 60 + 50);
                 const isNight = isNightSessionWindow();
-                const sessionHint = isNight ? ' · 🌙 夜盘时效: 仅统计今晚 21:00 后有成交的活跃品种 (已自动剔除日盘定格)' : '';
+                let sessionHint = '';
+                if (isWeekendOff) {
+                    sessionHint = ' · 🟢 周末休市: 展示本周最终全量收盘盘面';
+                } else if (isNight) {
+                    sessionHint = ' · 🌙 夜盘时效: 仅统计今晚 21:00 后有成交的活跃品种 (已自动剔除日盘定格)';
+                }
                 summaryEl.textContent = `过滤规则: 真实交割月份 (已排除当月/临近交割) 且 成交量 ≥ ${currentVolThreshold}手 且 |涨跌| ≥ ${currentThreshold.toFixed(1)}%${sessionHint}`;
             }
         }

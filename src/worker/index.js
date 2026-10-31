@@ -863,18 +863,43 @@ var index_default = {
       const dateStr = bjNow.toISOString().slice(0, 10);
       const prevTradingDay = new Date(Date.now() + 8 * 3600 * 1000 - 86400 * 1000).toISOString().slice(0, 10);
 
-      const [foreignDone, cnDayDone, cnNight1Done, cnNight2Done, cnNight3Done, rawLogs] = await Promise.all([
+      const [foreignDone, cnDayDone, cnNight1Done, cnNight2Done, cnNight3Done, rawLogs, latestSnapshotRaw] = await Promise.all([
         env.FUTURES_KV.get(`cron:done:foreign:${prevTradingDay}`),
         env.FUTURES_KV.get(`cron:done:${dateStr}:cn_day`),
         env.FUTURES_KV.get(`cron:done:${dateStr}:cn_night1`),
         env.FUTURES_KV.get(`cron:done:${dateStr}:cn_night2`),
         env.FUTURES_KV.get(`cron:done:${dateStr}:cn_night3`),
-        env.FUTURES_KV.get("cron:logs")
+        env.FUTURES_KV.get("cron:logs"),
+        env.FUTURES_KV.get(KV_KEY)
       ]);
+
+      let snapshotInfo = null;
+      if (latestSnapshotRaw) {
+        try {
+          const s = JSON.parse(latestSnapshotRaw);
+          snapshotInfo = {
+            savedAt: s.savedAt,
+            count: s.count,
+            ts: s.ts
+          };
+        } catch (e) {}
+      }
 
       let logs = [];
       if (rawLogs) {
         try { logs = JSON.parse(rawLogs); } catch (e) { logs = []; }
+      }
+
+      // 各收盘快照在当日是否为交易计划内任务
+      const cnDayExpected = (dayOfWeek >= 1 && dayOfWeek <= 5);
+      const cnNight1Expected = (dayOfWeek >= 1 && dayOfWeek <= 5);
+      const cnNight2Expected = (dayOfWeek >= 2 && dayOfWeek <= 6);
+      const cnNight3Expected = (dayOfWeek >= 2 && dayOfWeek <= 6);
+
+      function renderTaskBadge(done, isExpected, notExpectedText = "周末休市 (非交易日)") {
+        if (done) return '<span class="badge badge-done">🟢 已完成</span>';
+        if (!isExpected) return `<span class="badge badge-pending">⚪ ${notExpectedText}</span>`;
+        return '<span class="badge badge-pending">⚪ 未到时间/待触发</span>';
       }
 
       // 检查最近 7 天存在的外盘归档
@@ -941,14 +966,23 @@ var index_default = {
 </div>
 
 <div class="card">
+  <h3>💾 国内期货全量收盘快照 (snapshot:latest)</h3>
+  ${snapshotInfo ? `
+    <span class="badge badge-done">🟢 快照正常就绪</span>
+    <span style="margin-left: 10px;">包含合约数: <strong>${snapshotInfo.count}</strong> 个</span>
+    <span style="margin-left: 10px; color:#8b949e;">保存时间: ${snapshotInfo.savedAt}</span>
+  ` : '<span class="badge badge-pending">❌ 暂无快照数据</span>'}
+</div>
+
+<div class="card">
   <h3>📋 今日收盘任务完成状态检查</h3>
   <table>
     <tr><th>任务名称</th><th>对应日期/交易日</th><th>当前状态</th></tr>
     <tr><td>外盘 CME 1分钟全量归档</td><td>${prevTradingDay}</td><td><span class="badge ${foreignDone ? 'badge-done' : 'badge-pending'}">${foreignDone ? '🟢 已完成' : '⚪ 未就绪/待触发'}</span></td></tr>
-    <tr><td>国内日盘收盘快照 (15:02)</td><td>${dateStr}</td><td><span class="badge ${cnDayDone ? 'badge-done' : 'badge-pending'}">${cnDayDone ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
-    <tr><td>国内夜盘收盘1 (23:02)</td><td>${dateStr}</td><td><span class="badge ${cnNight1Done ? 'badge-done' : 'badge-pending'}">${cnNight1Done ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
-    <tr><td>国内夜盘收盘2 (01:02)</td><td>${dateStr}</td><td><span class="badge ${cnNight2Done ? 'badge-done' : 'badge-pending'}">${cnNight2Done ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
-    <tr><td>国内夜盘收盘3 (02:32)</td><td>${dateStr}</td><td><span class="badge ${cnNight3Done ? 'badge-done' : 'badge-pending'}">${cnNight3Done ? '🟢 已完成' : '⚪ 未到时间/待触发'}</span></td></tr>
+    <tr><td>国内日盘收盘快照 (15:02)</td><td>${dateStr}</td><td>${renderTaskBadge(cnDayDone, cnDayExpected, '周末休市 (非交易日)')}</td></tr>
+    <tr><td>国内夜盘收盘1 (23:02)</td><td>${dateStr}</td><td>${renderTaskBadge(cnNight1Done, cnNight1Expected, '周末休市 (非交易日)')}</td></tr>
+    <tr><td>国内夜盘收盘2 (01:02)</td><td>${dateStr}</td><td>${renderTaskBadge(cnNight2Done, cnNight2Expected, '周日无夜盘 (无跨日任务)')}</td></tr>
+    <tr><td>国内夜盘收盘3 (02:32)</td><td>${dateStr}</td><td>${renderTaskBadge(cnNight3Done, cnNight3Expected, '周日无夜盘 (无跨日任务)')}</td></tr>
   </table>
 </div>
 
