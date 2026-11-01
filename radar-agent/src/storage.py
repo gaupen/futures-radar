@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from typing import List, Dict, Any, Optional
 from src.models import IdeaRecord, PlanSummary, SectorWeather
@@ -5,6 +6,9 @@ from src.models import IdeaRecord, PlanSummary, SectorWeather
 class SQLiteLedger:
     def __init__(self, db_path: str = "ideas_ledger.sqlite"):
         self.db_path = db_path
+        db_dir = os.path.dirname(os.path.abspath(self.db_path))
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:

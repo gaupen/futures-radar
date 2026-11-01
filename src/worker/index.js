@@ -527,6 +527,38 @@ var index_default = {
         }
       });
     }
+    const IDEAS_KV_KEY = "agent:ideas:latest";
+    if (url.pathname === "/api/ideas" || url.pathname === "/api/ideas/sync") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204 });
+      }
+      if (request.method === "POST") {
+        if (!checkToken(request, url, env)) {
+          return jsonResp({ ok: false, error: "unauthorized" }, 401);
+        }
+        if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
+        try {
+          const payload = await request.json();
+          await env.FUTURES_KV.put(IDEAS_KV_KEY, JSON.stringify(payload), { expirationTtl: 86400 * 30 });
+          return jsonResp({ ok: true, savedAt: new Date().toISOString() });
+        } catch (e) {
+          return jsonResp({ ok: false, error: e && e.message || String(e) }, 400);
+        }
+      }
+      if (request.method === "GET") {
+        if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
+        const raw = await env.FUTURES_KV.get(IDEAS_KV_KEY);
+        if (!raw) return jsonResp({ ok: true, data: null });
+        return new Response(raw, {
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+            "access-control-allow-origin": "*"
+          }
+        });
+      }
+      return jsonResp({ ok: false, error: "method not allowed" }, 405);
+    }
     if (url.pathname === "/api/sina") {
       let list = url.searchParams.get("list");
       if (!list) return new Response("", { status: 400 });
