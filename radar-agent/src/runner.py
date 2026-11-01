@@ -15,16 +15,24 @@ from src.storage import SQLiteLedger
 from src.sync import sync_to_cloudflare
 
 def load_default_fixtures() -> tuple[list, dict]:
-    """加载本地 Mock 基础数据"""
+    """加载收盘基准数据 (优先读取真实最新快照)"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(os.path.dirname(current_dir))
     fixtures_dir = os.path.join(os.path.dirname(current_dir), "tests", "fixtures")
 
-    snapshot_path = os.path.join(fixtures_dir, "snapshot_mock.json")
-    foreign_path = os.path.join(fixtures_dir, "foreign_mock.json")
+    # 优先检查 backup 目录下的真实最新快照
+    backup_snap_path = os.path.join(root_dir, "backup", "snapshot_latest.json")
+    if os.path.exists(backup_snap_path):
+        with open(backup_snap_path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+            snapshot = data.get("diff", data) if isinstance(data, dict) else data
+    else:
+        snapshot_path = os.path.join(fixtures_dir, "snapshot_mock.json")
+        with open(snapshot_path, "r", encoding="utf-8-sig") as f:
+            snapshot = json.load(f)
 
-    with open(snapshot_path, "r", encoding="utf-8") as f:
-        snapshot = json.load(f)
-    with open(foreign_path, "r", encoding="utf-8") as f:
+    foreign_path = os.path.join(fixtures_dir, "foreign_mock.json")
+    with open(foreign_path, "r", encoding="utf-8-sig") as f:
         foreign = json.load(f)
 
     return snapshot, foreign
@@ -137,14 +145,20 @@ if __name__ == "__main__":
         }
 
     target_worker = args.worker_url if args.sync else None
-    result = run_pipeline(
-        domestic_snapshot=snapshot,
-        foreign_archive=foreign,
-        mock_llm=mock_llm,
-        db_path=args.db,
-        worker_url=target_worker,
-        snap_token=args.token
-    )
+    try:
+        result = run_pipeline(
+            domestic_snapshot=snapshot,
+            foreign_archive=foreign,
+            mock_llm=mock_llm,
+            db_path=args.db,
+            worker_url=target_worker,
+            snap_token=args.token
+        )
+    except Exception as e:
+        print(f"\n❌ [FATAL] 投研 Agent 运行中断崩溃: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
     print("\n========== 💡 期货雷达「口水投研」今日战报 ==========")
     print(f"更新时戳: {result['updated_at']}")

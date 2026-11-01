@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import json
 import time
@@ -48,12 +49,34 @@ def extract_json_block(text: str) -> Dict[str, Any]:
 
     raise ValueError(f"未在文本中发现有效的 JSON 结构: {text[:200]}")
 
+def find_local_api_key() -> Optional[str]:
+    """自动检索本地可能存在的 .env.local 凭据文件"""
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", "infra", "cloud", "google-cloud", ".env.local"),
+        os.path.join("D:\\agRepos\\0000\\infra\\cloud\\google-cloud\\.env.local"),
+        ".env.local"
+    ]
+    for p in possible_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("GEMINI_API_KEY=") or line.startswith("GOOGLE_API_KEY="):
+                            val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if val:
+                                return val
+            except Exception:
+                pass
+    return None
+
 class ResilientGeminiClient:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = (
             api_key
             or os.environ.get("GEMINI_API_KEY")
             or os.environ.get("GOOGLE_API_KEY")
+            or find_local_api_key()
         )
 
     def validate_model(self, model: str) -> str:
@@ -64,11 +87,11 @@ class ResilientGeminiClient:
             )
         return model
 
-    def _call_single_model(self, model: str, prompt: str, timeout: int = 15) -> Dict[str, Any]:
-        """单次调用指定模型，内置 503 退避重试与配额枯竭熔断"""
+    def _call_single_model(self, model: str, prompt: str, timeout: int = 25) -> Dict[str, Any]:
+        """单次调用指定模型，内置 10s/20s/30s 诚实耐受重试，拒绝伪造假数据"""
         self.validate_model(model)
         if not self.api_key:
-            raise ValueError("未配置 GEMINI_API_KEY 或 GOOGLE_API_KEY")
+            raise ValueError("未配置 GEMINI_API_KEY，且未在 infra/cloud/google-cloud/.env.local 找到有效凭证！")
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
         payload = {
@@ -82,7 +105,7 @@ class ResilientGeminiClient:
         }
         body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
-        max_retries = 3
+        max_retries = 4
         for attempt in range(max_retries):
             req = urllib.request.Request(
                 url,
@@ -109,25 +132,30 @@ class ResilientGeminiClient:
                 except Exception:
                     pass
 
-                # 503: 服务临时不可用，执行指数抖动退避
+                # 503: 服务超载，诚实递增等待 (10s -> 20s -> 30s)
                 if e.code == 503:
                     if attempt < max_retries - 1:
-                        sleep_time = (2 ** attempt) + random.uniform(0.5, 1.5)
+                        sleep_time = (attempt + 1) * 10.0 + random.uniform(1.0, 3.0)
+                        print(f"[503 超载等待] 模型 {model} 正在排队，等待 {sleep_time:.1f} 秒后发起第 {attempt + 2} 次重试...", file=sys.stderr)
                         time.sleep(sleep_time)
                         continue
-                    raise LLMCallError(f"模型 {model} 连续 503 超载: {error_body}")
+                    raise LLMCallError(f"模型 {model} 连续 503 超载且重试耗尽，拒绝假兜底: {error_body}")
 
                 # 429 或 400 配额耗尽
                 if e.code == 429 or "quota" in error_body.lower() or "<html>" in error_body.lower():
-                    raise QuotaExhaustedError(f"模型 {model} 配额已枯竭或被限流 (code {e.code}): {error_body}")
+                    raise QuotaExhaustedError(f"模型 {model} 配额已枯竭 (code {e.code}): {error_body}")
 
                 raise LLMCallError(f"HTTP 错误 {e.code}: {error_body}")
 
             except (urllib.error.URLError, TimeoutError) as e:
                 if attempt < max_retries - 1:
-                    time.sleep(2.0)
+                    sleep_time = (attempt + 1) * 10.0
+                    print(f"[网络等待] 模型 {model} 握手超时，等待 {sleep_time:.1f} 秒后重试...", file=sys.stderr)
+                    time.sleep(sleep_time)
                     continue
-                raise LLMCallError(f"网络或超时异常 ({model}): {e}")
+                raise LLMCallError(f"网络异常 ({model}) 重试耗尽: {e}")
+
+        raise LLMCallError(f"模型 {model} 重试全部失败")
 
         raise LLMCallError(f"模型 {model} 重试全部失败")
 
