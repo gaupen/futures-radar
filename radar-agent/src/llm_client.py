@@ -87,8 +87,20 @@ class ResilientGeminiClient:
             )
         return model
 
-    def _call_single_model(self, model: str, prompt: str, timeout: int = 25) -> Dict[str, Any]:
-        """单次调用指定模型，内置 10s/20s/30s 诚实耐受重试，拒绝伪造假数据"""
+    def _call_single_model(
+        self,
+        model: str,
+        prompt: str,
+        timeout: int = 25,
+        max_duration_sec: float = 600.0,
+        cap_interval_sec: float = 30.0
+    ) -> Dict[str, Any]:
+        """
+        单次调用指定模型：
+        - 内置 10s -> 20s -> 30s 递增重试
+        - 达到 30s 后封顶固定间隔，持续重试直到达到 max_duration_sec (默认最长耐心等待 10 分钟)
+        - 拒绝伪造假数据，超时耗尽后显式抛出致命异常
+        """
         self.validate_model(model)
         if not self.api_key:
             raise ValueError("未配置 GEMINI_API_KEY，且未在 infra/cloud/google-cloud/.env.local 找到有效凭证！")
@@ -105,8 +117,11 @@ class ResilientGeminiClient:
         }
         body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
-        max_retries = 4
-        for attempt in range(max_retries):
+        start_time = time.time()
+        attempt = 0
+        while True:
+            attempt += 1
+            elapsed = time.time() - start_time
             req = urllib.request.Request(
                 url,
                 data=body_bytes,
@@ -132,51 +147,58 @@ class ResilientGeminiClient:
                 except Exception:
                     pass
 
-                # 503: 服务超载，诚实递增等待 (10s -> 20s -> 30s)
-                if e.code == 503:
-                    if attempt < max_retries - 1:
-                        sleep_time = (attempt + 1) * 10.0 + random.uniform(1.0, 3.0)
-                        print(f"[503 超载等待] 模型 {model} 正在排队，等待 {sleep_time:.1f} 秒后发起第 {attempt + 2} 次重试...", file=sys.stderr)
-                        time.sleep(sleep_time)
-                        continue
-                    raise LLMCallError(f"模型 {model} 连续 503 超载且重试耗尽，拒绝假兜底: {error_body}")
-
-                # 429 或 400 配额耗尽
+                # 429 或配额枯竭：直接退出让备用模型接管，不盲目等待
                 if e.code == 429 or "quota" in error_body.lower() or "<html>" in error_body.lower():
                     raise QuotaExhaustedError(f"模型 {model} 配额已枯竭 (code {e.code}): {error_body}")
+
+                # 503: 服务超载，10s -> 20s -> 30s 递增后封顶持续重试
+                if e.code == 503:
+                    # 递增到 cap_interval_sec 封顶
+                    base_sleep = min(cap_interval_sec, attempt * 10.0)
+                    sleep_time = base_sleep + random.uniform(1.0, 3.0)
+                    elapsed = time.time() - start_time
+                    if elapsed + sleep_time > max_duration_sec:
+                        raise LLMCallError(
+                            f"模型 {model} 连续 503 超载且累计等待已达 {elapsed:.1f} 秒 (上限 {max_duration_sec} 秒)，拒绝假兜底: {error_body}"
+                        )
+                    print(
+                        f"[503 超载等待] 模型 {model} 正在排队，等待 {sleep_time:.1f} 秒后发起第 {attempt + 1} 次重试 (累计耗时 {elapsed:.0f}s / 上限 {max_duration_sec}s)...",
+                        file=sys.stderr
+                    )
+                    time.sleep(sleep_time)
+                    continue
 
                 raise LLMCallError(f"HTTP 错误 {e.code}: {error_body}")
 
             except (urllib.error.URLError, TimeoutError) as e:
-                if attempt < max_retries - 1:
-                    sleep_time = (attempt + 1) * 10.0
-                    print(f"[网络等待] 模型 {model} 握手超时，等待 {sleep_time:.1f} 秒后重试...", file=sys.stderr)
-                    time.sleep(sleep_time)
-                    continue
-                raise LLMCallError(f"网络异常 ({model}) 重试耗尽: {e}")
-
-        raise LLMCallError(f"模型 {model} 重试全部失败")
-
-        raise LLMCallError(f"模型 {model} 重试全部失败")
+                base_sleep = min(cap_interval_sec, attempt * 10.0)
+                sleep_time = base_sleep
+                elapsed = time.time() - start_time
+                if elapsed + sleep_time > max_duration_sec:
+                    raise LLMCallError(f"网络异常 ({model}) 累计重试超限 ({elapsed:.1f}s / {max_duration_sec}s): {e}")
+                print(f"[网络等待] 模型 {model} 握手超时，等待 {sleep_time:.1f} 秒后发起第 {attempt + 1} 次重试...", file=sys.stderr)
+                time.sleep(sleep_time)
+                continue
 
     def generate_daily_analysis(
         self,
         prompt: str,
-        mock_response: Optional[Dict[str, Any]] = None
+        mock_response: Optional[Dict[str, Any]] = None,
+        max_duration_sec: float = 600.0
     ) -> Dict[str, Any]:
         """
         日度投研主入口：
         - 优先支持传入 mock_response (L0 离线沙盒，0 API 消耗)
-        - 生产运行走 3.5 Flash Lite -> 故障自动平滑转移至 3.1 Flash Lite
+        - 生产运行走 3.5 Flash Lite (最长耐心重试 10 分钟) -> 故障自动平滑转移至 3.1 Flash Lite
         """
         if mock_response is not None:
             return mock_response
 
         # 1. 尝试主力 3.5 Flash Lite
         try:
-            return self._call_single_model(MODEL_PRIMARY, prompt)
-        except QuotaExhaustedError:
-            pass  # 主力配额耗尽，转入备用
+            return self._call_single_model(MODEL_PRIMARY, prompt, max_duration_sec=max_duration_sec)
+        except (QuotaExhaustedError, LLMCallError) as e:
+            print(f"[主力模型故障] {e}，正在平滑转移至备用模型 {MODEL_FALLBACK}...", file=sys.stderr)
 
         # 2. 降级备用 3.1 Flash Lite
-        return self._call_single_model(MODEL_FALLBACK, prompt)
+        return self._call_single_model(MODEL_FALLBACK, prompt, max_duration_sec=max_duration_sec)

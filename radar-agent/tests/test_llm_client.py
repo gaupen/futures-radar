@@ -64,5 +64,27 @@ class TestLLMClient(unittest.TestCase):
         res = client.generate_daily_analysis("test prompt")
         self.assertIn("sector_weather", res)
 
+    @patch("time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_503_retry_and_eventual_success(self, mock_urlopen, mock_sleep):
+        import urllib.error
+        client = ResilientGeminiClient(api_key="fake-key")
+
+        err_503 = urllib.error.HTTPError(
+            url="https://api.google.com",
+            code=503,
+            msg="Service Unavailable",
+            hdrs={},
+            fp=MagicMock(read=lambda: b'{"error": {"message": "Model overloaded"}}')
+        )
+        mock_resp_success = MagicMock()
+        mock_resp_success.__enter__.return_value.read.return_value = b'{"candidates": [{"content": {"parts": [{"text": "{\\"sector_weather\\": [], \\\"new_ideas\\\": []}"}]}}]}'
+        # 前两次 503，第三次成功
+        mock_urlopen.side_effect = [err_503, err_503, mock_resp_success]
+
+        res = client.generate_daily_analysis("test prompt", max_duration_sec=60.0)
+        self.assertIn("sector_weather", res)
+        self.assertEqual(mock_sleep.call_count, 2)
+
 if __name__ == "__main__":
     unittest.main()
