@@ -15,6 +15,7 @@ class TestE2EPipeline(unittest.TestCase):
     def test_e2e_mock_pipeline_run(self):
         snapshot, foreign = load_default_fixtures()
         mock_llm = {
+            "macro_summary": "原油外盘大涨提振能化板块，黑色系淡季累库维持弱势",
             "sector_weather": [
                 {"sector": "能化系", "bias": "BULLISH", "narrative": "原油走强直接推高裂解成本"},
                 {"sector": "黑色系", "bias": "BEARISH", "narrative": "成材淡季累库现货贴水加剧"}
@@ -35,6 +36,9 @@ class TestE2EPipeline(unittest.TestCase):
         )
 
         self.assertIn("updated_at", payload_day1)
+        self.assertIn("date", payload_day1)
+        self.assertIn("generated_at", payload_day1)
+        self.assertEqual(payload_day1["macro_summary"], "原油外盘大涨提振能化板块，黑色系淡季累库维持弱势")
         self.assertEqual(len(payload_day1["sector_weather"]), 2)
         self.assertEqual(len(payload_day1["active_ideas"]), 1)
         self.assertEqual(payload_day1["active_ideas"][0]["symbol"], "FU2611")

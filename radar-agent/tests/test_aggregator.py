@@ -33,7 +33,7 @@ class TestAggregator(unittest.TestCase):
         self.assertEqual(classify_sector("LC2701"), "有色金属")
         self.assertEqual(classify_sector("AG2702"), "贵金属")
         self.assertEqual(classify_sector("AU2612"), "贵金属")
-        self.assertEqual(classify_sector("AP701"), "农产品")
+        self.assertEqual(classify_sector("AP701"), "瓜果农副")
         self.assertEqual(classify_sector("A2701"), "农产品")
 
     def test_filter_top_movers_dedup(self):

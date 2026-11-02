@@ -68,8 +68,17 @@ def run_pipeline(
     )
 
     # 5. 构建回传画板数据载荷
+    now_dt = datetime.now()
+    now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+    date_str = now_dt.strftime("%Y-%m-%d")
+    model_name = "mock-sandbox" if mock_llm is not None else "gemini-3.5-flash-lite"
+
     payload = {
-        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "date": date_str,
+        "updated_at": now_str,
+        "generated_at": now_str,
+        "model_used": model_name,
+        "macro_summary": cycle_result.macro_summary,
         "sector_weather": [
             {"sector": w.sector, "bias": w.bias, "narrative": w.narrative}
             for w in cycle_result.sector_weather

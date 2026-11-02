@@ -11,10 +11,8 @@ SECTOR_MAP = {
     },
     "有色金属": {"CU", "AL", "ZN", "PB", "NI", "SN", "SS", "AO", "BC", "LC", "SI", "PS"},
     "贵金属": {"AU", "AG", "PT", "PD"},
-    "农产品": {
-        "A", "B", "M", "Y", "P", "C", "CS", "OI", "RM", "SR", "CF", "CY",
-        "AP", "CJ", "PK", "LH", "JD", "RR"
-    }
+    "瓜果农副": {"AP", "CJ", "PK", "SR", "CF", "CY"},
+    "农产品": {"A", "B", "M", "Y", "P", "C", "CS", "OI", "RM", "LH", "JD", "RR"}
 }
 
 FOREIGN_NAME_MAP = {
@@ -132,12 +130,13 @@ def aggregate_market_features(
     top_movers = filter_top_movers(items, min_pct=1.5, max_count=15)
     foreign_anchors = parse_foreign_anchors(foreign_archive)
 
-    # 5 大板块结构化分组
+    # 板块结构化分组 (包含瓜果农副)
     sector_dist: Dict[str, List[ContractItem]] = {
         "黑色系": [],
         "能化系": [],
         "有色金属": [],
         "贵金属": [],
+        "瓜果农副": [],
         "农产品": [],
         "综合": []
     }
@@ -145,6 +144,8 @@ def aggregate_market_features(
         sec = classify_sector(item.symbol)
         if sec in sector_dist:
             sector_dist[sec].append(item)
+        else:
+            sector_dist["综合"].append(item)
 
     return AggregatedMarketFeatures(
         top_movers=top_movers,
@@ -152,3 +153,11 @@ def aggregate_market_features(
         sector_distribution=sector_dist,
         all_contracts=all_dict
     )
+
+def group_movers_by_sector(top_movers: List[ContractItem]) -> Dict[str, List[ContractItem]]:
+    """将异动主力合约按所属板块归类聚拢"""
+    grouped: Dict[str, List[ContractItem]] = {}
+    for c in top_movers:
+        sec = classify_sector(c.symbol)
+        grouped.setdefault(sec, []).append(c)
+    return grouped

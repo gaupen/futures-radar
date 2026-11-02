@@ -528,6 +528,7 @@ var index_default = {
       });
     }
     const IDEAS_KV_KEY = "agent:ideas:latest";
+    const IDEAS_DATES_KV_KEY = "agent:ideas:dates";
     if (url.pathname === "/api/ideas" || url.pathname === "/api/ideas/sync") {
       if (request.method === "OPTIONS") {
         return new Response(null, { status: 204 });
@@ -539,23 +540,74 @@ var index_default = {
         if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
         try {
           const payload = await request.json();
-          await env.FUTURES_KV.put(IDEAS_KV_KEY, JSON.stringify(payload), { expirationTtl: 86400 * 30 });
-          return jsonResp({ ok: true, savedAt: new Date().toISOString() });
+          const dateStr = payload.date || (payload.updated_at && payload.updated_at.split(" ")[0]) || new Date().toISOString().split("T")[0];
+          
+          // 1. 保存最新快照
+          await env.FUTURES_KV.put(IDEAS_KV_KEY, JSON.stringify(payload), { expirationTtl: 86400 * 90 });
+          // 2. 按日期归档
+          await env.FUTURES_KV.put(`agent:ideas:date:${dateStr}`, JSON.stringify(payload), { expirationTtl: 86400 * 90 });
+          
+          // 3. 更新可用日期索引列表
+          let dates = [];
+          try {
+            const rawDates = await env.FUTURES_KV.get(IDEAS_DATES_KV_KEY);
+            if (rawDates) dates = JSON.parse(rawDates);
+          } catch (_) {}
+          if (!Array.isArray(dates)) dates = [];
+          if (!dates.includes(dateStr)) {
+            dates.unshift(dateStr);
+            dates.sort().reverse();
+            if (dates.length > 60) dates = dates.slice(0, 60);
+            await env.FUTURES_KV.put(IDEAS_DATES_KV_KEY, JSON.stringify(dates), { expirationTtl: 86400 * 90 });
+          }
+
+          return jsonResp({ ok: true, date: dateStr, savedAt: new Date().toISOString() });
         } catch (e) {
           return jsonResp({ ok: false, error: e && e.message || String(e) }, 400);
         }
       }
       if (request.method === "GET") {
         if (!env.FUTURES_KV) return jsonResp({ ok: false, error: "KV 未绑定 FUTURES_KV" }, 500);
-        const raw = await env.FUTURES_KV.get(IDEAS_KV_KEY);
-        if (!raw) return jsonResp({ ok: true, data: null });
-        return new Response(raw, {
-          headers: {
-            "content-type": "application/json; charset=utf-8",
-            "cache-control": "no-store",
-            "access-control-allow-origin": "*"
+        
+        let dates = [];
+        try {
+          const rawDates = await env.FUTURES_KV.get(IDEAS_DATES_KV_KEY);
+          if (rawDates) dates = JSON.parse(rawDates);
+        } catch (_) {}
+        if (!Array.isArray(dates)) dates = [];
+
+        const reqDate = url.searchParams.get("date");
+        let keyToRead = IDEAS_KV_KEY;
+        if (reqDate && /^\d{4}-\d{2}-\d{2}$/.test(reqDate)) {
+          keyToRead = `agent:ideas:date:${reqDate}`;
+        }
+
+        let raw = await env.FUTURES_KV.get(keyToRead);
+        // 如果查询特定日期但未命中，回退到最新一天
+        if (!raw && keyToRead !== IDEAS_KV_KEY) {
+          raw = await env.FUTURES_KV.get(IDEAS_KV_KEY);
+        }
+
+        if (!raw) {
+          return jsonResp({ ok: true, data: null, dates, current_date: null });
+        }
+        
+        try {
+          const parsed = JSON.parse(raw);
+          const curDate = parsed.date || (parsed.updated_at && parsed.updated_at.split(" ")[0]) || null;
+          if (curDate && !dates.includes(curDate)) {
+            dates.unshift(curDate);
+            dates.sort().reverse();
           }
-        });
+          return jsonResp({
+            ok: true,
+            data: parsed,
+            dates,
+            current_date: curDate
+          });
+        } catch (_) {
+          return jsonResp({ ok: true, data: null, dates, current_date: null });
+        }
       }
       return jsonResp({ ok: false, error: "method not allowed" }, 405);
     }

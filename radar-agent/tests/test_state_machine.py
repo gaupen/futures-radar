@@ -36,6 +36,7 @@ class TestStateMachine(unittest.TestCase):
             )
         }
         llm_output = {
+            "macro_summary": "能化领涨，黑色承压",
             "sector_weather": [{"sector": "能化系", "bias": "BULLISH", "narrative": "原油走强支撑"}],
             "checkpoint_reviews": [
                 {"id": "idea-ta", "verdict": "CONTINUE", "comment": "7天筑底已熬过，进入下一个7天"}
@@ -57,6 +58,17 @@ class TestStateMachine(unittest.TestCase):
         self.assertEqual(updated_idea.current_price, 5200.0)
         self.assertEqual(updated_idea.status, "TRACKING")
         self.assertEqual(updated_idea.checkpoints_passed, 1)
+
+        # 验证宏观风向与持久化
+        self.assertEqual(result.macro_summary, "能化领涨，黑色承压")
+        from datetime import datetime
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        saved_macro = self.ledger.load_daily_macro(today_str)
+        self.assertIsNotNone(saved_macro)
+        self.assertEqual(saved_macro["macro_summary"], "能化领涨，黑色承压")
+        saved_weather = self.ledger.load_sector_weather(today_str)
+        self.assertEqual(len(saved_weather), 1)
+        self.assertEqual(saved_weather[0].sector, "能化系")
 
         # 检查生成了 checkpoint 事件
         self.assertEqual(len(result.checkpoint_events), 1)

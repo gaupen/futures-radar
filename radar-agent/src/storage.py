@@ -71,6 +71,13 @@ class SQLiteLedger:
                 narrative TEXT NOT NULL,
                 PRIMARY KEY (date, sector)
             );
+
+            CREATE TABLE IF NOT EXISTS daily_macro (
+                date TEXT PRIMARY KEY,
+                macro_summary TEXT NOT NULL,
+                model_used TEXT NOT NULL,
+                generated_at TEXT NOT NULL
+            );
             """)
         finally:
             conn.close()
@@ -194,5 +201,64 @@ class SQLiteLedger:
                 )
                 for row in rows
             ]
+        finally:
+            conn.close()
+
+    def save_sector_weather(self, date: str, sector: str, bias: str, narrative: str):
+        conn = self._get_conn()
+        try:
+            with conn:
+                conn.execute("""
+                INSERT INTO sector_weather (date, sector, bias, narrative)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(date, sector) DO UPDATE SET
+                    bias = excluded.bias,
+                    narrative = excluded.narrative
+                """, (date, sector, bias, narrative))
+        finally:
+            conn.close()
+
+    def load_sector_weather(self, date: str) -> List[SectorWeather]:
+        conn = self._get_conn()
+        try:
+            rows = conn.execute("SELECT * FROM sector_weather WHERE date = ?", (date,)).fetchall()
+            return [
+                SectorWeather(
+                    sector=r["sector"],
+                    bias=r["bias"],
+                    narrative=r["narrative"]
+                )
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+    def save_daily_macro(self, date: str, macro_summary: str, model_used: str = "", generated_at: str = ""):
+        conn = self._get_conn()
+        try:
+            with conn:
+                conn.execute("""
+                INSERT INTO daily_macro (date, macro_summary, model_used, generated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    macro_summary = excluded.macro_summary,
+                    model_used = excluded.model_used,
+                    generated_at = excluded.generated_at
+                """, (date, macro_summary, model_used, generated_at))
+        finally:
+            conn.close()
+
+    def load_daily_macro(self, date: str) -> Optional[Dict[str, Any]]:
+        conn = self._get_conn()
+        try:
+            row = conn.execute("SELECT * FROM daily_macro WHERE date = ?", (date,)).fetchone()
+            if row:
+                return {
+                    "date": row["date"],
+                    "macro_summary": row["macro_summary"],
+                    "model_used": row["model_used"],
+                    "generated_at": row["generated_at"]
+                }
+            return None
         finally:
             conn.close()

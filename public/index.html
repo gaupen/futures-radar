@@ -2760,42 +2760,93 @@
             filterAndRenderFocusPool();
         }
 
-        // ==================== 💡 假设雷达与口水投研画板渲染 ====================
-        async function renderIdeasRadarBoard() {
+        // ==================== 💡 假设雷达与口水投研画板渲染 (支持日期翻阅与宏观分层) ====================
+        let currentIdeasDate = null;
+        async function renderIdeasRadarBoard(targetDate) {
             const container = document.getElementById('cards-container');
             if (!container) return;
             container.innerHTML = `
                 <div style="grid-column: 1/-1; padding: 40px 20px; text-align: center; color: var(--text-muted);">
                     <div style="margin: 0 auto 12px; width: 28px; height: 28px; border: 3px solid #1f6feb; border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite;"></div>
-                    正在载入最新收盘口水投研与 7 日假说账本...
+                    正在载入口水投研与 7 日假说账本...
                 </div>
             `;
             try {
-                const resp = await fetch('/api/ideas');
+                let fetchUrl = '/api/ideas';
+                if (targetDate) {
+                    fetchUrl += '?date=' + encodeURIComponent(targetDate);
+                }
+                const resp = await fetch(fetchUrl);
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const json = await resp.json();
                 const data = json && (json.data !== undefined ? json.data : json);
+                const dates = (json && json.dates) || [];
+                const curDate = (json && json.current_date) || (data && (data.date || (data.updated_at && data.updated_at.split(' ')[0]))) || null;
+                currentIdeasDate = curDate;
+
                 if (!data || !data.updated_at) {
                     container.innerHTML = `
                         <div style="grid-column: 1/-1; padding: 50px 20px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-color); border-radius: 12px; color: var(--text-muted);">
-                            <h3 style="color: var(--text-primary); margin-bottom: 8px;">💡 暂无今日收盘投研战报</h3>
-                            <p style="font-size: 13px;">每日收盘 (15:05 / 23:05) 后，Agent 自动复盘并生成板块天气与 7 天假说。</p>
+                            <h3 style="color: var(--text-primary); margin-bottom: 8px;">💡 暂无收盘投研战报</h3>
+                            <p style="font-size: 13px;">每日收盘 (15:05) 后，Agent 自动复盘并生成板块天气与 7 天假说。</p>
                         </div>
                     `;
                     return;
                 }
 
+                // 计算前一天与后一天
+                let olderDate = null;
+                let newerDate = null;
+                if (dates && dates.length > 0 && curDate) {
+                    const idx = dates.indexOf(curDate);
+                    if (idx !== -1) {
+                        if (idx < dates.length - 1) olderDate = dates[idx + 1];
+                        if (idx > 0) newerDate = dates[idx - 1];
+                    }
+                }
+
                 let html = '';
-                // 1. 板块口水天气
+
+                // 0. 顶部日期翻阅栏与发布时间徽标
+                html += `
+                <div style="grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;">
+                    <button onclick="renderIdeasRadarBoard('${olderDate || ''}')" ${!olderDate ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : 'style="cursor:pointer;"'} class="tab-btn" style="padding: 4px 10px; font-size: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-primary);">◀ 前一日</button>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <span style="font-weight: 800; font-size: 15px; font-family: var(--font-mono); color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                            📅 ${curDate || '最新收盘'}
+                            ${dates.length && curDate === dates[0] ? '<span style="font-size:10px; font-weight:700; padding:1px 5px; border-radius:4px; background:#238636; color:#fff;">最新</span>' : ''}
+                        </span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px;">
+                            🕒 发布时戳: ${data.generated_at || data.updated_at || ''} · ${data.model_used || 'Gemini 3.5 Flash Lite'}
+                        </span>
+                    </div>
+                    <button onclick="renderIdeasRadarBoard('${newerDate || ''}')" ${!newerDate ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : 'style="cursor:pointer;"'} class="tab-btn" style="padding: 4px 10px; font-size: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-primary);">后一日 ▶</button>
+                </div>
+                `;
+
+                // 1. 顶层宏观大局风向口水总评
+                if (data.macro_summary) {
+                    html += `
+                    <div style="grid-column: 1/-1; background: linear-gradient(135deg, rgba(31,111,235,0.14), rgba(56,139,253,0.04)); border: 1px solid rgba(56,139,253,0.35); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #58a6ff; display: flex; align-items: center; gap: 6px;">
+                                🧭 全盘风向与口水总评
+                            </h4>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-primary); line-height: 1.55; margin: 0; font-weight: 500;">
+                            ${data.macro_summary}
+                        </p>
+                    </div>
+                    `;
+                }
+
+                // 2. 中层板块口水气象
                 html += `
                 <div style="grid-column: 1/-1; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 12px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h4 style="margin: 0; font-size: 15px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                            🌦️ 板块口水天气预报
+                        <h4 style="margin: 0; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                            🌦️ 板块口水气象 (${(data.sector_weather || []).length} 个板块)
                         </h4>
-                        <span style="font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
-                            更新时戳: ${data.updated_at || ''}
-                        </span>
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
                 `;
@@ -2824,7 +2875,7 @@
                 });
                 html += `</div></div>`;
 
-                // 2. 存量假说跟踪
+                // 3. 底层存量假说跟踪
                 html += `
                 <div style="grid-column: 1/-1; margin-bottom: 12px;">
                     <h4 style="margin: 0 0 10px 4px; font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
@@ -2864,7 +2915,7 @@
                 }
                 html += `</div></div>`;
 
-                // 3. 最新结项计划小结
+                // 4. 最新结项计划小结
                 if (data.completed_summaries && data.completed_summaries.length > 0) {
                     html += `
                     <div style="grid-column: 1/-1; margin-top: 6px;">
@@ -2894,6 +2945,13 @@
                     });
                     html += `</div></div>`;
                 }
+
+                // 5. 底部信息注脚
+                html += `
+                <div style="grid-column: 1/-1; text-align: center; padding: 16px 0 24px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+                    💡 假设雷达每日 15:05 自动定拍 · 数据产出于 ${data.generated_at || data.updated_at || ''}
+                </div>
+                `;
 
                 container.innerHTML = html;
             } catch (err) {

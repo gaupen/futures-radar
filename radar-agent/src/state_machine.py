@@ -12,6 +12,7 @@ class CycleResult:
     checkpoint_events: List[Dict[str, Any]] = field(default_factory=list)
     completed_summaries: List[PlanSummary] = field(default_factory=list)
     sector_weather: List[SectorWeather] = field(default_factory=list)
+    macro_summary: str = ""
 
 def evaluate_daily_cycle(
     active_ideas: List[IdeaRecord],
@@ -115,7 +116,8 @@ def evaluate_daily_cycle(
         if storage:
             storage.save_active_idea(new_idea)
 
-    # 3. 解析板块天气
+    # 3. 解析板块天气与宏观风向
+    macro_summary = str(llm_output.get("macro_summary") or "").strip()
     sector_weather = [
         SectorWeather(
             sector=sw.get("sector", "综合"),
@@ -126,9 +128,22 @@ def evaluate_daily_cycle(
         if isinstance(sw, dict)
     ]
 
+    # 4. 持久化板块天气与每日宏观
+    if storage:
+        for sw in sector_weather:
+            storage.save_sector_weather(today_str, sw.sector, sw.bias, sw.narrative)
+        if macro_summary:
+            storage.save_daily_macro(
+                today_str,
+                macro_summary,
+                model_used=str(llm_output.get("model_used") or ""),
+                generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
+
     return CycleResult(
         active_ideas=updated_active,
         checkpoint_events=checkpoint_events,
         completed_summaries=completed_summaries,
-        sector_weather=sector_weather
+        sector_weather=sector_weather,
+        macro_summary=macro_summary
     )
